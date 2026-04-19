@@ -35,7 +35,15 @@ class StatusPresenter {
   show(message, type = "info") {
     if (!this.statusContainer) return;
     this.statusContainer.textContent = message;
-    this.statusContainer.className = `status ${type === "ok" ? "ok" : type === "err" ? "err" : "info"}`;
+    const baseClasses =
+      "mt-4 rounded-2xl border px-3 py-2 text-sm font-medium transition";
+    const stateClasses = {
+      info: "border-sky-200/30 bg-sky-500/10 text-sky-100",
+      ok: "border-emerald-200/30 bg-emerald-500/10 text-emerald-100",
+      err: "border-rose-200/30 bg-rose-500/10 text-rose-100",
+    };
+    const safeType = stateClasses[type] ? type : "info";
+    this.statusContainer.className = `${baseClasses} ${stateClasses[safeType]}`;
     console.log("[Status]", message);
   }
 }
@@ -230,7 +238,8 @@ class BusView {
     linesList.innerHTML = "";
     if (!lines.length) {
       const emptyState = document.createElement("div");
-      emptyState.className = "muted";
+      emptyState.className =
+        "rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300/80";
       emptyState.textContent = "No hay líneas cargadas";
       linesList.appendChild(emptyState);
       return;
@@ -238,14 +247,22 @@ class BusView {
 
     lines.forEach((line) => {
       const card = document.createElement("div");
-      card.className = `line-item${line.id === activeLineId ? " active" : ""}`;
+      const isActive = line.id === activeLineId;
+      card.className =
+        "group flex cursor-pointer items-start gap-3 rounded-2xl border px-3 py-3 transition " +
+        (isActive
+          ? "border-cyan-300/60 bg-cyan-400/20 shadow-lg shadow-cyan-500/20"
+          : "border-white/10 bg-white/5 hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-white/10");
       card.dataset.id = line.id;
       card.setAttribute("role", "listitem");
       card.innerHTML = `
-        <div class="line-dot" style="background:${line.color}"></div>
-        <div style="flex:1">${this.escapeHtml(line.name)}
-          <div class="muted" style="font-size:12px">
-            (ID: ${this.escapeHtml(line.id)} - ${line.stops.length} paradas)
+        <div class="mt-0.5 h-3.5 w-3.5 flex-shrink-0 rounded-full" style="background:${line.color}"></div>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-semibold ${isActive ? "text-white" : "text-slate-100"}">
+            ${this.escapeHtml(line.name)}
+          </p>
+          <div class="mt-0.5 text-xs ${isActive ? "text-cyan-100/90" : "text-slate-300/80"}">
+            ID: ${this.escapeHtml(line.id)} · ${line.stops.length} paradas
           </div>
         </div>
       `;
@@ -276,7 +293,8 @@ class BusView {
       })
       .forEach((stopName) => {
         const item = document.createElement("div");
-        item.className = "stop";
+        item.className =
+          "rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100";
         item.innerHTML = `<div>${this.escapeHtml(stopName)}</div>`;
         stopsContainer.appendChild(item);
       });

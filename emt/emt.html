@@ -4,62 +4,145 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Gestor de Líneas de Autobús (EMT Valencia)</title>
+    <script>
+      tailwind = {
+        config: {
+          theme: {
+            extend: {
+              fontFamily: {
+                sans: ["Space Grotesk", "sans-serif"],
+                display: ["Fraunces", "serif"],
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="emt.css" />
   </head>
-  <body>
-    <div class="page-shell">
-      <header class="topbar">
-        <p class="eyebrow">Explorador urbano</p>
-        <h1>Gestor de líneas y paradas · EMT Valencia</h1>
+  <body class="min-h-screen bg-slate-950 text-slate-100 antialiased">
+    <div class="relative isolate min-h-screen overflow-hidden pb-8">
+      <div
+        class="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-cyan-400/20 blur-3xl"
+      ></div>
+      <div
+        class="pointer-events-none absolute -right-40 top-44 h-[28rem] w-[28rem] rounded-full bg-fuchsia-400/15 blur-3xl"
+      ></div>
+      <div
+        class="pointer-events-none absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-amber-300/15 blur-3xl"
+      ></div>
+
+      <header class="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
+        <div
+          class="rounded-3xl border border-white/15 bg-white/10 px-6 py-6 shadow-2xl shadow-slate-950/35 backdrop-blur-xl sm:px-8"
+        >
+          <p class="text-[0.7rem] uppercase tracking-[0.35em] text-cyan-100/75">
+            Movilidad inteligente
+          </p>
+          <h1
+            class="mt-2 font-display text-3xl leading-tight text-white sm:text-4xl"
+          >
+            EMT Valencia · Dashboard de Líneas y Paradas
+          </h1>
+        </div>
       </header>
-      <main class="app">
-        <aside class="panel panel-lines">
-          <div class="panel-head">
-            <h2>Líneas disponibles</h2>
-            <p class="muted">Obtenidas desde WFS</p>
+
+      <main
+        class="mx-auto mt-5 grid max-w-7xl grid-cols-1 gap-4 px-4 sm:px-6 lg:grid-cols-[340px_minmax(0,1fr)] lg:px-8"
+      >
+        <aside
+          class="rounded-3xl border border-white/15 bg-white/[0.08] p-5 shadow-xl shadow-slate-950/20 backdrop-blur-xl"
+        >
+          <div>
+            <h2 class="text-lg font-semibold text-white">Líneas disponibles</h2>
+            <p class="mt-1 text-sm text-slate-300/80">Obtenidas desde WFS</p>
           </div>
 
-          <div id="statusContainer" class="status info">Iniciando...</div>
-
-          <div class="lines-list" id="linesList" role="list"></div>
-
-          <!-- Controles para añadir/eliminar líneas ocultos por diseño (no permitidos) -->
-          <div class="controls">
-            <input
-              id="newLineName"
-              placeholder="Nombre de la línea"
-              style="display: none"
-            />
-            <button id="addLineBtn" style="display: none">Añadir</button>
+          <div
+            id="statusContainer"
+            class="mt-4 rounded-2xl border border-sky-200/30 bg-sky-500/10 px-3 py-2 text-sm font-medium text-sky-100"
+          >
+            Iniciando...
           </div>
 
-          <div class="actions-row">
-            <button id="reloadBtn">Recargar desde servidor</button>
+          <div
+            class="custom-scroll mt-4 max-h-[56vh] space-y-2 overflow-auto pr-1"
+            id="linesList"
+            role="list"
+          ></div>
+
+          <div class="hidden">
+            <input id="newLineName" placeholder="Nombre de la línea" />
+            <button id="addLineBtn">Añadir</button>
           </div>
 
-          <p class="muted helper-text">
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button
+              id="reloadBtn"
+              class="w-full rounded-2xl border border-cyan-300/30 bg-gradient-to-r from-cyan-400/80 to-blue-500/80 px-4 py-2.5 font-semibold text-white transition hover:brightness-110"
+            >
+              Recargar desde servidor
+            </button>
+          </div>
+
+          <p class="mt-3 text-xs leading-relaxed text-slate-300/70">
             La app intenta cargar siempre desde el WFS indicado. Si falla,
             intenta usar localStorage como fallback.
           </p>
         </aside>
 
-        <section class="panel main">
-          <div class="main-head">
+        <section
+          class="rounded-3xl border border-white/15 bg-white/[0.08] p-5 shadow-xl shadow-slate-950/20 backdrop-blur-xl sm:p-6"
+        >
+          <div
+            class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"
+          >
             <div>
-              <h2 id="currentLineName">Selecciona una línea</h2>
-              <p id="currentLineInfo" class="muted">Paradas de la línea</p>
+              <h2 id="currentLineName" class="text-lg font-semibold text-white">
+                Selecciona una línea
+              </h2>
+              <p id="currentLineInfo" class="mt-1 text-sm text-slate-300/80">
+                Paradas de la línea
+              </p>
             </div>
-            <div class="search-wrap">
-              <input id="searchStop" placeholder="Buscar parada..." />
+            <div class="w-full md:w-auto md:min-w-[280px]">
+              <input
+                id="searchStop"
+                placeholder="Buscar parada..."
+                class="w-full rounded-2xl border border-white/20 bg-slate-950/35 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-400 focus:border-cyan-300/70 focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+              />
             </div>
           </div>
 
-          <div id="stopsContainer" class="stops" aria-live="polite"></div>
+          <div
+            id="stopsContainer"
+            class="mt-5 min-h-48 space-y-2"
+            aria-live="polite"
+          ></div>
 
-          <footer class="panel-footer">
-            <button id="saveBtn">Guardar</button>
-            <button id="clearBtn">Borrar datos locales</button>
-            <span class="muted"
+          <footer
+            class="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
+          >
+            <button
+              id="saveBtn"
+              class="rounded-2xl border border-cyan-300/30 bg-gradient-to-r from-cyan-400/85 to-teal-500/85 px-4 py-2.5 font-semibold text-white transition hover:brightness-110"
+            >
+              Guardar
+            </button>
+            <button
+              id="clearBtn"
+              class="rounded-2xl border border-rose-300/30 bg-rose-500/15 px-4 py-2.5 font-semibold text-rose-100 transition hover:bg-rose-500/25"
+            >
+              Borrar datos locales
+            </button>
+            <span class="text-xs text-slate-300/75"
               >(Paradas locales; las líneas proceden del servidor WFS)</span
             >
           </footer>
