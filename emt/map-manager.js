@@ -174,7 +174,7 @@ export class LeafletMapManager {
           <button type="button" data-map-action="center-stop" class="rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100 hover:bg-white/20">Centrar parada</button>
           <button type="button" data-map-action="fit-line" class="rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100 hover:bg-white/20">Ver todas</button>
           <button type="button" data-map-action="center-user" class="rounded-md border border-white/20 bg-cyan-500/20 px-2 py-1 font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
-          <button type="button" data-map-action="route-user-stop" class="rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a parada</button>
+          <button type="button" data-map-action="route-user-stop" class="rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a pie</button>
           <button type="button" data-map-action="fullscreen" class="rounded-md border border-emerald-300/30 bg-emerald-500/20 px-2 py-1 font-semibold text-emerald-100 hover:bg-emerald-500/30">Pantalla completa</button>
         </div>
       `;
@@ -365,7 +365,7 @@ export class LeafletMapManager {
     }
 
     try {
-      this.status.show("Calculando ruta por calles...", "info");
+      this.status.show("Calculando ruta a pie...", "info");
       const route = await this.fetchRouteGeometry(
         this.userPoint,
         this.selectedStopPoint,
@@ -408,11 +408,11 @@ export class LeafletMapManager {
         }
       }
 
-      this.status.show("Ruta calculada", "ok");
+      this.status.show("Ruta a pie calculada", "ok");
     } catch (error) {
       console.warn("No se pudo calcular la ruta", error);
       if (showStatusOnError) {
-        this.status.show("No se pudo calcular la ruta por calles", "err");
+        this.status.show("No se pudo calcular la ruta a pie", "err");
       }
     }
   }
@@ -431,8 +431,9 @@ export class LeafletMapManager {
     const toLon = Number(toPoint.lng);
     const toLat = Number(toPoint.lat);
 
+    // routed-foot usa red peatonal de OSM (aunque el segmento de perfil sea /driving/).
     const endpoint =
-      "https://router.project-osrm.org/route/v1/foot/" +
+      "https://routing.openstreetmap.de/routed-foot/route/v1/driving/" +
       encodeURIComponent(`${fromLon},${fromLat}`) +
       ";" +
       encodeURIComponent(`${toLon},${toLat}`) +
