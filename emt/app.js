@@ -11,8 +11,10 @@ export class BusApp {
     this.storage = new StorageService(this.config.storageKey, this.status);
     this.api = new EMTApi(this.config);
     this.view = new BusView(this.dom);
-    this.mapManager = new LeafletMapManager(this.status, (value) =>
-      this.view.escapeHtml(value),
+    this.mapManager = new LeafletMapManager(
+      this.status,
+      (value) => this.view.escapeHtml(value),
+      (stopId) => this.fetchStopArrivalsData(stopId),
     );
 
     this.lines = [];
@@ -584,7 +586,7 @@ export class BusApp {
 
     if (currentRequestToken !== this.stopArrivalsRequestToken) return;
     const arrivalsView = this.buildStopArrivalsView(arrivals);
-    panel.textContent = arrivalsView.text;
+    this.renderStopArrivalsPanel(panel, arrivalsView);
     this.applyStopArrivalsPanelState(panel, arrivalsView.variant);
   }
 
@@ -608,18 +610,13 @@ export class BusApp {
     const safeArrivals = Array.isArray(arrivals) ? arrivals.slice(0, 6) : [];
     if (!safeArrivals.length) {
       return {
-        text: "Proximos buses: no disponibles para esta parada en este momento.",
-        variant: "neutral",
-      };
-    }
-
-    const chunks = safeArrivals
-      .map((item) => this.formatArrivalItem(item))
-      .filter(Boolean);
-
-    if (!chunks.length) {
-      return {
-        text: "Proximos buses: no disponibles para esta parada en este momento.",
+        title: "Proximos buses",
+        rows: [
+          {
+            label: "Estado",
+            value: "No disponibles para esta parada en este momento.",
+          },
+        ],
         variant: "neutral",
       };
     }
@@ -628,17 +625,102 @@ export class BusApp {
       this.isServiceNoticeArrival(item),
     );
 
+    const rows = this.groupArrivalsByLine(safeArrivals);
+    if (!rows.length) {
+      return {
+        title: "Proximos buses",
+        rows: [
+          {
+            label: "Estado",
+            value: "No disponibles para esta parada en este momento.",
+          },
+        ],
+        variant: "neutral",
+      };
+    }
+
     if (hasServiceNotice) {
       return {
-        text: `Aviso SAE: ${chunks.join(" · ")}`,
+        title: "Aviso SAE",
+        rows,
         variant: "warning",
       };
     }
 
     return {
-      text: `Proximos buses: ${chunks.join(" · ")}`,
+      title: "Proximos buses",
+      rows,
       variant: "ok",
     };
+  }
+
+  groupArrivalsByLine(arrivals) {
+    const grouped = new Map();
+
+    arrivals.forEach((arrival) => {
+      if (!arrival || typeof arrival !== "object") return;
+
+      const lineId = String(arrival.lineId || "").trim();
+      const destination = String(arrival.destination || "").trim();
+      const timeLabel = String(arrival.timeLabel || "").trim();
+      const minutes = Number(arrival.minutes);
+      const waitText = Number.isFinite(minutes)
+        ? `${minutes} min`
+        : timeLabel || "sin tiempo";
+
+      const key = lineId || "AVISO";
+      const rowLabel = lineId ? `L${lineId}` : "Aviso";
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          label: rowLabel,
+          values: [],
+        });
+      }
+
+      const value = destination ? `${waitText} (${destination})` : waitText;
+      grouped.get(key).values.push(value);
+    });
+
+    return Array.from(grouped.values()).map((entry) => ({
+      label: entry.label,
+      value: entry.values.join(", "),
+    }));
+  }
+
+  renderStopArrivalsPanel(panel, arrivalsView) {
+    if (!panel || !arrivalsView) return;
+
+    panel.replaceChildren();
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "mb-1 font-semibold tracking-wide";
+    titleEl.textContent = String(arrivalsView.title || "Proximos buses");
+    panel.appendChild(titleEl);
+
+    const rows = Array.isArray(arrivalsView.rows) ? arrivalsView.rows : [];
+    if (!rows.length) {
+      const emptyEl = document.createElement("div");
+      emptyEl.textContent = "Sin datos";
+      panel.appendChild(emptyEl);
+      return;
+    }
+
+    rows.forEach((row) => {
+      const rowEl = document.createElement("div");
+      rowEl.className = "mb-0.5 flex flex-wrap gap-x-2";
+
+      const labelEl = document.createElement("span");
+      labelEl.className = "font-semibold";
+      labelEl.textContent = `${String(row.label || "Linea")}:`;
+
+      const valueEl = document.createElement("span");
+      valueEl.textContent = String(row.value || "-");
+
+      rowEl.appendChild(labelEl);
+      rowEl.appendChild(valueEl);
+      panel.appendChild(rowEl);
+    });
   }
 
   isServiceNoticeArrival(arrival) {
@@ -697,27 +779,6 @@ export class BusApp {
     }
 
     panel.classList.add("border-white/15", "bg-slate-900/35", "text-slate-200");
-  }
-
-  formatArrivalItem(arrival) {
-    if (!arrival || typeof arrival !== "object") return "";
-
-    const lineId = String(arrival.lineId || "").trim();
-    const destination = String(arrival.destination || "").trim();
-    const timeLabel = String(arrival.timeLabel || "").trim();
-    const minutes = Number(arrival.minutes);
-
-    const lineText = lineId ? `L${lineId}` : "Linea";
-    const destinationText = destination ? ` ${destination}` : "";
-    const waitText = Number.isFinite(minutes)
-      ? `${minutes} min`
-      : timeLabel || "sin tiempo";
-
-    if (!lineId && !destination) {
-      return waitText;
-    }
-
-    return `${lineText}${destinationText}: ${waitText}`;
   }
 
   buildExpandedMapPayload(expandedMap) {

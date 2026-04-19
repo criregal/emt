@@ -195,6 +195,7 @@ export class BusView {
     let expandedMap = null;
 
     paginated.forEach((stop) => {
+      const lineBadges = this.renderStopLineBadgesHtml(stop);
       const row = document.createElement("tr");
       row.className =
         "cursor-pointer hover:bg-white/10 focus-within:bg-white/10";
@@ -202,7 +203,7 @@ export class BusView {
       row.innerHTML = `
         <td class="px-4 py-3 font-semibold text-fuchsia-200">${this.escapeHtml(stop.id)}</td>
         <td class="px-4 py-3 text-slate-100">${this.escapeHtml(stop.name)}</td>
-        <td class="px-4 py-3 text-slate-300">${this.escapeHtml(stop.line)}</td>
+        <td class="px-4 py-3">${lineBadges}</td>
       `;
 
       const triggerToggle = () => {
@@ -269,6 +270,20 @@ export class BusView {
       to: Math.min(startIndex + pageSize, totalItems),
       expandedMap,
     };
+  }
+
+  renderStopLineBadgesHtml(stop) {
+    const lineValues = this.getStopLineValues(stop);
+    if (!lineValues.length) {
+      return '<span class="inline-flex items-center rounded-full bg-rose-700 px-2 py-0.5 text-xs font-semibold text-white">-</span>';
+    }
+
+    return lineValues
+      .map(
+        (lineId) =>
+          `<span class="mr-1 mb-1 inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-xs font-semibold text-white">${this.escapeHtml(lineId)}</span>`,
+      )
+      .join("");
   }
 
   getStopMapContainerId(stopId) {

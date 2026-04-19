@@ -1,10 +1,12 @@
 export class LeafletMapManager {
-  constructor(statusPresenter, escapeHtml) {
+  constructor(statusPresenter, escapeHtml, fetchStopArrivals) {
     this.status = statusPresenter;
     this.escapeHtml =
       typeof escapeHtml === "function"
         ? escapeHtml
         : (value) => String(value || "");
+    this.fetchStopArrivals =
+      typeof fetchStopArrivals === "function" ? fetchStopArrivals : null;
     this.currentMap = null;
     this.userPoint = null;
     this.selectedStopPoint = null;
@@ -17,12 +19,20 @@ export class LeafletMapManager {
     this.routeRequestController = null;
     this.routeSummaryElementId = "";
     this.mapRoutePanelElementId = "";
+    this.mapArrivalsPanelElementId = "";
     this.routeTargetStop = null;
     this.userMarker = null;
     this.realtimeLocationEnabled = false;
     this.realtimeLocationIntervalId = null;
     this.aerialOverlayEnabled = false;
     this.aerialOverlayLayer = null;
+    this.arrivalsRequestToken = 0;
+    this.currentArrivalsRows = [];
+    this.lastRouteMetrics = {
+      distanceText: "-",
+      durationApiText: "-",
+      durationAverageText: "-",
+    };
   }
 
   render(expandedMap) {
@@ -44,10 +54,19 @@ export class LeafletMapManager {
     this.lastExpandedMapData = expandedMap;
     this.routeSummaryElementId = String(expandedMap.routeSummaryId || "");
     this.mapRoutePanelElementId = String(expandedMap.mapRoutePanelId || "");
+    this.mapArrivalsPanelElementId = this.getMapArrivalsPanelId(
+      this.mapRoutePanelElementId,
+    );
     this.selectedStopPoint = window.L.latLng(lat, lon);
     this.routeTargetStop = {
       id: String(expandedMap.stop.id || ""),
       name: String(expandedMap.stop.name || "Parada"),
+    };
+    this.currentArrivalsRows = [{ label: "Estado", value: "consultando..." }];
+    this.lastRouteMetrics = {
+      distanceText: "-",
+      durationApiText: "-",
+      durationAverageText: "-",
     };
 
     const mapContainer = document.getElementById(expandedMap.mapContainerId);
@@ -101,11 +120,10 @@ export class LeafletMapManager {
     });
 
     this.ensureMapRoutePanel(mapContainer, this.mapRoutePanelElementId);
-    this.updateRoutePanels({
-      distanceText: "-",
-      durationApiText: "-",
-      durationAverageText: "-",
-    });
+    this.ensureMapArrivalsPanel(mapContainer, this.mapArrivalsPanelElementId);
+    this.updateRoutePanels(this.lastRouteMetrics);
+    this.updateArrivalsPanel();
+    this.loadStopArrivalsForCurrentTarget();
     this.setupResizeHandling(map, mapContainer);
     setTimeout(() => {
       if (this.currentMap) this.currentMap.invalidateSize();
@@ -540,8 +558,113 @@ export class LeafletMapManager {
       id: String((stop && stop.id) || ""),
       name: String((stop && stop.name) || "Parada"),
     };
+    this.currentArrivalsRows = [{ label: "Estado", value: "consultando..." }];
+    this.updateRoutePanels(this.lastRouteMetrics);
+    this.updateArrivalsPanel();
+    this.loadStopArrivalsForCurrentTarget();
 
     this.drawRouteToSelectedStop(map, options);
+  }
+
+  async loadStopArrivalsForCurrentTarget() {
+    const stopId = this.routeTargetStop
+      ? String(this.routeTargetStop.id || "").trim()
+      : "";
+
+    if (!stopId || !this.fetchStopArrivals) {
+      this.currentArrivalsRows = [{ label: "Estado", value: "No disponibles" }];
+      this.updateArrivalsPanel();
+      return;
+    }
+
+    const requestToken = ++this.arrivalsRequestToken;
+
+    try {
+      const arrivals = await this.fetchStopArrivals(stopId);
+      if (requestToken !== this.arrivalsRequestToken) return;
+      this.currentArrivalsRows = this.buildArrivalsRows(arrivals);
+      this.updateArrivalsPanel();
+    } catch (error) {
+      if (requestToken !== this.arrivalsRequestToken) return;
+      console.warn("No se pudieron cargar llegadas en panel del mapa", error);
+      this.currentArrivalsRows = [{ label: "Estado", value: "No disponibles" }];
+      this.updateArrivalsPanel();
+    }
+  }
+
+  buildArrivalsRows(arrivals) {
+    const safeArrivals = Array.isArray(arrivals) ? arrivals.slice(0, 8) : [];
+    if (!safeArrivals.length) {
+      return [{ label: "Estado", value: "No disponibles" }];
+    }
+
+    const grouped = new Map();
+    const notices = [];
+
+    safeArrivals.forEach((arrival) => {
+      if (!arrival || typeof arrival !== "object") return;
+
+      const lineId = String(arrival.lineId || "").trim();
+      const destination = String(arrival.destination || "").trim();
+      const timeLabel = String(arrival.timeLabel || "").trim();
+      const minutes = Number(arrival.minutes);
+      const waitText = Number.isFinite(minutes)
+        ? `${minutes} min`
+        : timeLabel || "sin tiempo";
+
+      if (!lineId) {
+        if (waitText) notices.push(waitText);
+        return;
+      }
+
+      if (!grouped.has(lineId)) grouped.set(lineId, []);
+      const value = destination ? `${waitText} (${destination})` : waitText;
+      grouped.get(lineId).push(value);
+    });
+
+    const rows = Array.from(grouped.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], "es", { numeric: true }))
+      .map(([lineId, values]) => ({
+        label: `L${lineId}`,
+        value: values.join(", "),
+      }));
+
+    if (notices.length) {
+      rows.push({ label: "Aviso", value: notices.join(" ") });
+    }
+
+    return rows.length ? rows : [{ label: "Estado", value: "No disponibles" }];
+  }
+
+  getMapArrivalsPanelId(routePanelId) {
+    const base = String(routePanelId || "").trim();
+    if (!base) return "";
+    return `${base}-arrivals`;
+  }
+
+  buildArrivalsPanelText() {
+    const rows = Array.isArray(this.currentArrivalsRows)
+      ? this.currentArrivalsRows
+      : [];
+    if (!rows.length) return "Llegadas\nEstado: No disponibles";
+
+    const lines = ["Llegadas"];
+    rows.forEach((row) => {
+      const label = String(row && row.label ? row.label : "Linea").trim();
+      const value = String(row && row.value ? row.value : "-").trim();
+      lines.push(`${label}: ${value}`);
+    });
+
+    return lines.join("\n");
+  }
+
+  updateArrivalsPanel() {
+    if (!this.mapArrivalsPanelElementId) return;
+
+    const panel = document.getElementById(this.mapArrivalsPanelElementId);
+    if (!panel) return;
+
+    panel.textContent = this.buildArrivalsPanelText();
   }
 
   async drawRouteToSelectedStop(map, options = {}) {
@@ -758,7 +881,12 @@ export class LeafletMapManager {
   }
 
   updateRoutePanels(routeMetrics) {
-    const text = this.buildRoutePanelText(routeMetrics);
+    this.lastRouteMetrics = routeMetrics || {
+      distanceText: "-",
+      durationApiText: "-",
+      durationAverageText: "-",
+    };
+    const text = this.buildRoutePanelText(this.lastRouteMetrics);
 
     if (this.routeSummaryElementId) {
       const rowPanel = document.getElementById(this.routeSummaryElementId);
@@ -782,12 +910,29 @@ export class LeafletMapManager {
     if (!panel) {
       panel = document.createElement("div");
       panel.id = panelId;
-      panel.className =
-        "pointer-events-none absolute bottom-2 left-2 right-2 z-[450] rounded-lg border border-white/15 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 shadow";
       mapContainer.appendChild(panel);
     }
 
+    panel.className =
+      "pointer-events-none absolute bottom-2 left-2 w-1/4 z-[450] rounded-lg border border-white/20 bg-slate-900/85 px-3 py-2 text-sm font-semibold leading-5 text-slate-100 shadow-lg";
+
     panel.textContent = "Distancia: - · Tiempo ruta: - · Tiempo medio: -";
+  }
+
+  ensureMapArrivalsPanel(mapContainer, panelId) {
+    if (!mapContainer || !panelId) return;
+
+    let panel = document.getElementById(panelId);
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = panelId;
+      mapContainer.appendChild(panel);
+    }
+
+    panel.className =
+      "pointer-events-none absolute bottom-2 right-2 w-1/4 z-[450] rounded-lg border border-emerald-300/35 bg-slate-900/90 px-3 py-2 text-sm font-semibold leading-5 text-emerald-100 shadow-lg whitespace-pre-line";
+
+    panel.textContent = "Llegadas\nEstado: consultando...";
   }
 
   clearRouteLayer(map) {
@@ -973,7 +1118,15 @@ export class LeafletMapManager {
     this.lastExpandedMapData = null;
     this.routeSummaryElementId = "";
     this.mapRoutePanelElementId = "";
+    this.mapArrivalsPanelElementId = "";
     this.routeTargetStop = null;
+    this.arrivalsRequestToken += 1;
+    this.currentArrivalsRows = [];
+    this.lastRouteMetrics = {
+      distanceText: "-",
+      durationApiText: "-",
+      durationAverageText: "-",
+    };
     if (this.routeRequestController) {
       this.routeRequestController.abort();
       this.routeRequestController = null;
