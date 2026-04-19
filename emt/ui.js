@@ -240,7 +240,7 @@ export class BusView {
           const mapContainerId = this.getStopMapContainerId(stop.id);
           detailsCell.innerHTML = `
             <div class="mb-2 text-xs text-slate-300/80">Lat: ${lat.toFixed(6)} · Lon: ${lon.toFixed(6)}</div>
-            <div id="${this.escapeHtml(mapContainerId)}" class="h-64 w-full overflow-hidden rounded-xl border border-white/15"></div>
+            <div id="${this.escapeHtml(mapContainerId)}" class="h-64 w-full overflow-auto rounded-xl border border-white/15" style="resize: vertical; min-height: 16rem; max-height: 80vh;"></div>
           `;
           expandedMap = {
             stop,

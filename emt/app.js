@@ -563,7 +563,21 @@ export class BusApp {
     if (!expandedMap || !expandedMap.stop) return expandedMap;
 
     const selectedStop = expandedMap.stop;
-    const selectedLineIds = this.view.getStopLineValues(selectedStop);
+    const selectedStopId = String(selectedStop.id || "").trim();
+    const stopLineIds = this.view.getStopLineValues(selectedStop);
+    const directionLineIds = selectedStopId
+      ? Object.keys(
+          (this.stopDirectionsIndex &&
+            this.stopDirectionsIndex[selectedStopId]) ||
+            {},
+        )
+      : [];
+    const activeFilterLineIds = Array.from(this.selectedStopLineIds || []);
+
+    const selectedLineIds = Array.from(
+      new Set([...stopLineIds, ...directionLineIds, ...activeFilterLineIds]),
+    ).filter(Boolean);
+
     if (!selectedLineIds.length) {
       return {
         ...expandedMap,

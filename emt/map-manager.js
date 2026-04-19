@@ -11,6 +11,8 @@ export class LeafletMapManager {
     this.lineBounds = null;
     this.topMenuControl = null;
     this.lastExpandedMapData = null;
+    this.mapResizeObserver = null;
+    this.mapContainerElement = null;
   }
 
   render(expandedMap) {
@@ -60,9 +62,36 @@ export class LeafletMapManager {
     });
 
     this.currentMap = map;
+    this.mapContainerElement = mapContainer;
+    this.setupResizeHandling(map, mapContainer);
     setTimeout(() => {
       if (this.currentMap) this.currentMap.invalidateSize();
     }, 0);
+  }
+
+  setupResizeHandling(map, mapContainer) {
+    if (!map || !mapContainer) return;
+
+    if (this.mapResizeObserver) {
+      this.mapResizeObserver.disconnect();
+      this.mapResizeObserver = null;
+    }
+
+    if (typeof window !== "undefined" && "ResizeObserver" in window) {
+      this.mapResizeObserver = new window.ResizeObserver(() => {
+        if (this.currentMap && this.currentMap === map) {
+          this.currentMap.invalidateSize();
+        }
+      });
+      this.mapResizeObserver.observe(mapContainer);
+      return;
+    }
+
+    mapContainer.addEventListener("mouseup", () => {
+      if (this.currentMap && this.currentMap === map) {
+        this.currentMap.invalidateSize();
+      }
+    });
   }
 
   addLineStopsMarkers(map, expandedMap) {
@@ -453,6 +482,11 @@ export class LeafletMapManager {
     this.selectedStopPoint = null;
     this.lineBounds = null;
     this.lastExpandedMapData = null;
+    if (this.mapResizeObserver) {
+      this.mapResizeObserver.disconnect();
+      this.mapResizeObserver = null;
+    }
+    this.mapContainerElement = null;
     if (this.currentMap && typeof this.currentMap.remove === "function") {
       this.currentMap.remove();
     }
