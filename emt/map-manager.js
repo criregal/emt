@@ -114,12 +114,15 @@ export class LeafletMapManager {
     this.addLineStopsMarkers(map, expandedMap);
     this.addTopMenuControl(map);
 
-    this.addUserLocationMarker(map, {
-      fitToInclude: false,
-      focusOnUser: true,
-      showStatusOnError: false,
-      drawRouteToStop: true,
-    });
+    // En iOS Safari es mas fiable solicitar ubicacion tras accion explicita.
+    if (!this.isIOSDevice()) {
+      this.addUserLocationMarker(map, {
+        fitToInclude: false,
+        focusOnUser: true,
+        showStatusOnError: false,
+        drawRouteToStop: true,
+      });
+    }
 
     this.ensureMapRoutePanel(mapContainer, this.mapRoutePanelElementId);
     this.ensureMapArrivalsPanel(mapContainer, this.mapArrivalsPanelElementId);
@@ -377,74 +380,134 @@ export class LeafletMapManager {
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (!this.currentMap || this.currentMap !== map) return;
+    const isLocalHost =
+      typeof window !== "undefined" &&
+      /^(localhost|127\.0\.0\.1)$/.test(String(window.location.hostname));
+    const hasSecureContext =
+      typeof window === "undefined" ? true : !!window.isSecureContext;
 
-        const userLat = Number(position.coords.latitude);
-        const userLon = Number(position.coords.longitude);
-        if (!Number.isFinite(userLat) || !Number.isFinite(userLon)) return;
+    if (!hasSecureContext && !isLocalHost) {
+      if (showStatusOnError) {
+        this.status.show("Geolocalizacion requiere HTTPS en iOS/Safari", "err");
+      }
+      return;
+    }
 
-        this.userPoint = window.L.latLng(userLat, userLon);
+    const onSuccess = (position) => {
+      if (!this.currentMap || this.currentMap !== map) return;
 
-        if (this.userMarker && map.hasLayer && map.hasLayer(this.userMarker)) {
-          this.userMarker.setLatLng([userLat, userLon]);
-        } else {
-          this.userMarker = window.L.marker([userLat, userLon], {
-            icon: this.createUserMarkerIcon(),
-            draggable: !this.realtimeLocationEnabled,
-            autoPan: true,
-          })
-            .addTo(map)
-            .bindPopup("Tu ubicación actual");
+      const userLat = Number(position.coords.latitude);
+      const userLon = Number(position.coords.longitude);
+      if (!Number.isFinite(userLat) || !Number.isFinite(userLon)) return;
 
-          this.userMarker.on("dragend", () => {
-            if (this.realtimeLocationEnabled) return;
-            if (!this.userMarker) return;
+      this.userPoint = window.L.latLng(userLat, userLon);
 
-            const markerPoint = this.userMarker.getLatLng();
-            if (!markerPoint) return;
-            this.userPoint = window.L.latLng(markerPoint.lat, markerPoint.lng);
+      if (this.userMarker && map.hasLayer && map.hasLayer(this.userMarker)) {
+        this.userMarker.setLatLng([userLat, userLon]);
+      } else {
+        this.userMarker = window.L.marker([userLat, userLon], {
+          icon: this.createUserMarkerIcon(),
+          draggable: !this.realtimeLocationEnabled,
+          autoPan: true,
+        })
+          .addTo(map)
+          .bindPopup("Tu ubicación actual");
 
-            if (this.currentMap && this.selectedStopPoint) {
-              this.drawRouteToSelectedStop(this.currentMap, {
-                fitBounds: true,
-                showStatusOnError: true,
-              });
-            }
-          });
-        }
+        this.userMarker.on("dragend", () => {
+          if (this.realtimeLocationEnabled) return;
+          if (!this.userMarker) return;
 
-        this.updateUserMarkerDraggableState();
+          const markerPoint = this.userMarker.getLatLng();
+          if (!markerPoint) return;
+          this.userPoint = window.L.latLng(markerPoint.lat, markerPoint.lng);
 
-        if (focusOnUser) {
-          map.setView(this.userPoint, Math.max(map.getZoom(), 16));
-        } else if (fitToInclude) {
-          const currentBounds = map.getBounds();
-          if (currentBounds && currentBounds.isValid()) {
-            const extended = currentBounds.extend(this.userPoint);
-            map.fitBounds(extended.pad(0.15));
+          if (this.currentMap && this.selectedStopPoint) {
+            this.drawRouteToSelectedStop(this.currentMap, {
+              fitBounds: true,
+              showStatusOnError: true,
+            });
           }
-        }
+        });
+      }
 
-        if (drawRouteToStop) {
-          this.drawRouteToSelectedStop(map, {
-            fitBounds: true,
-            showStatusOnError,
-          });
+      this.updateUserMarkerDraggableState();
+
+      if (focusOnUser) {
+        map.setView(this.userPoint, Math.max(map.getZoom(), 16));
+      } else if (fitToInclude) {
+        const currentBounds = map.getBounds();
+        if (currentBounds && currentBounds.isValid()) {
+          const extended = currentBounds.extend(this.userPoint);
+          map.fitBounds(extended.pad(0.15));
         }
-      },
-      (error) => {
-        console.warn("No se pudo obtener la ubicación del usuario", error);
-        if (showStatusOnError) {
-          this.status.show("No se pudo obtener tu ubicación", "err");
-        }
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 30000,
-      },
+      }
+
+      if (drawRouteToStop) {
+        this.drawRouteToSelectedStop(map, {
+          fitBounds: true,
+          showStatusOnError,
+        });
+      }
+    };
+
+    const requestPosition = (useFallback) => {
+      const geolocationOptions = useFallback
+        ? {
+            enableHighAccuracy: false,
+            timeout: 15000,
+            maximumAge: 120000,
+          }
+        : {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 30000,
+          };
+
+      navigator.geolocation.getCurrentPosition(
+        onSuccess,
+        (error) => {
+          const code = Number(error && error.code);
+          const isTimeout = code === 3;
+
+          if (!useFallback && isTimeout) {
+            requestPosition(true);
+            return;
+          }
+
+          console.warn("No se pudo obtener la ubicación del usuario", error);
+          if (showStatusOnError) {
+            this.status.show(this.getGeolocationErrorMessage(error), "err");
+          }
+        },
+        geolocationOptions,
+      );
+    };
+
+    requestPosition(false);
+  }
+
+  getGeolocationErrorMessage(error) {
+    const code = Number(error && error.code);
+    if (code === 1) {
+      return "Permiso de ubicacion denegado. Revisa ajustes de Safari/iOS.";
+    }
+    if (code === 2) {
+      return "No se pudo determinar la ubicacion actual.";
+    }
+    if (code === 3) {
+      return "Tiempo de espera agotado al obtener la ubicacion.";
+    }
+    return "No se pudo obtener tu ubicación";
+  }
+
+  isIOSDevice() {
+    if (typeof navigator === "undefined") return false;
+    const userAgent = String(navigator.userAgent || "");
+    const platform = String(navigator.platform || "");
+
+    return (
+      /iPhone|iPad|iPod/i.test(userAgent) ||
+      (platform === "MacIntel" && Number(navigator.maxTouchPoints) > 1)
     );
   }
 
