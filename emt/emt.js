@@ -589,7 +589,9 @@ class BusView {
       .toLowerCase();
     const selectedSet = new Set(
       Array.isArray(selectedLineIds)
-        ? selectedLineIds.map((lineId) => String(lineId).trim()).filter(Boolean)
+        ? selectedLineIds
+            .map((lineId) => this.normalizeLineId(lineId))
+            .filter(Boolean)
         : [],
     );
 
@@ -597,10 +599,7 @@ class BusView {
       const byName = !safeStopName
         ? true
         : String(stop.name).toLowerCase().includes(safeStopName);
-      const stopLineValues = String(stop.line || "-")
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean);
+      const stopLineValues = this.getStopLineValues(stop);
       const byLine =
         selectedSet.size === 0
           ? true
@@ -648,6 +647,69 @@ class BusView {
       from: startIndex + 1,
       to: Math.min(startIndex + pageSize, totalItems),
     };
+  }
+
+  getStopLineValues(stop) {
+    const candidates = [stop ? stop.line : null, stop ? stop.lineas : null, stop ? stop.lines : null];
+    const values = [];
+
+    candidates.forEach((candidate) => {
+      this.extractLineValues(candidate).forEach((lineId) => values.push(lineId));
+    });
+
+    return Array.from(new Set(values));
+  }
+
+  extractLineValues(value) {
+    if (value === undefined || value === null) return [];
+
+    if (Array.isArray(value)) {
+      const merged = [];
+      value.forEach((item) => {
+        this.extractLineValues(item).forEach((lineId) => merged.push(lineId));
+      });
+      return merged;
+    }
+
+    if (typeof value === "string") {
+      const text = value.trim();
+      if (!text || text === "-") return [];
+
+      if (text.startsWith("[") && text.endsWith("]")) {
+        try {
+          const parsed = JSON.parse(text);
+          return this.extractLineValues(parsed);
+        } catch (error) {
+          // Continue with comma parsing if JSON parsing fails.
+        }
+      }
+
+      return text
+        .split(",")
+        .map((item) => this.normalizeLineId(item))
+        .filter(Boolean);
+    }
+
+    return [this.normalizeLineId(value)].filter(Boolean);
+  }
+
+  normalizeLineId(value) {
+    let text = String(value || "").trim();
+    if (!text || text === "-") return "";
+
+    text = text
+      .replace(/[\[\]"]/g, "")
+      .replace(/^linea\s*/i, "")
+      .replace(/^line\s*/i, "")
+      .trim();
+
+    if (!text) return "";
+
+    if (/^\d+$/.test(text)) {
+      return String(Number(text));
+    }
+
+    return text.toUpperCase();
   }
 
   renderEmptyTableRow(tableBody, colSpan, message) {
@@ -819,6 +881,29 @@ class BusApp {
         this.closeStopLineFilterPanel();
       }
     });
+
+    if (this.dom.stopsPrevPageBtn) {
+      this.dom.stopsPrevPageBtn.addEventListener("click", () => {
+        if (this.stopsPage <= 1) return;
+        this.stopsPage -= 1;
+        this.renderStopsScreen();
+      });
+    }
+
+    if (this.dom.stopsNextPageBtn) {
+      this.dom.stopsNextPageBtn.addEventListener("click", () => {
+        this.stopsPage += 1;
+        this.renderStopsScreen();
+      });
+    }
+
+    if (this.dom.reloadBtn) {
+      this.dom.reloadBtn.addEventListener("click", () => {
+        this.stopLinesIndex = {};
+        localStorage.removeItem(this.config.storageStopLinesIndexKey);
+        this.fetchLinesFromWFS();
+      });
+    }
   }
 
   renderStopLineFilterOptions() {
@@ -911,29 +996,6 @@ class BusApp {
     this.dom.stopLineFilterPanel.classList.add("hidden");
     if (this.dom.stopLineFilterBtn) {
       this.dom.stopLineFilterBtn.setAttribute("aria-expanded", "false");
-    }
-
-    if (this.dom.stopsPrevPageBtn) {
-      this.dom.stopsPrevPageBtn.addEventListener("click", () => {
-        if (this.stopsPage <= 1) return;
-        this.stopsPage -= 1;
-        this.renderStopsScreen();
-      });
-    }
-
-    if (this.dom.stopsNextPageBtn) {
-      this.dom.stopsNextPageBtn.addEventListener("click", () => {
-        this.stopsPage += 1;
-        this.renderStopsScreen();
-      });
-    }
-
-    if (this.dom.reloadBtn) {
-      this.dom.reloadBtn.addEventListener("click", () => {
-        this.stopLinesIndex = {};
-        localStorage.removeItem(this.config.storageStopLinesIndexKey);
-        this.fetchLinesFromWFS();
-      });
     }
   }
 
