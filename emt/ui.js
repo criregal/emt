@@ -172,14 +172,18 @@ export class BusView {
           '<div class="rounded-xl border border-slate-300/20 bg-slate-800/35 px-3 py-2 text-xs text-slate-200">No hay paradas cargadas para esta linea.</div>';
       } else {
         const listItems = stops
-          .map(
-            (stop) =>
-              `<li class="rounded-lg border border-white/10 bg-white/5 px-2 py-1">${this.escapeHtml(stop)}</li>`,
-          )
+          .map((stop, index) => {
+            const zebraClass =
+              index % 2 === 0 ? "bg-slate-900/55" : "bg-slate-800/45";
+            return `<li class="flex items-start gap-2 rounded-lg px-2.5 py-1.5 ${zebraClass}">
+              <span class="mt-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950/80 text-[11px] font-semibold text-cyan-200">${index + 1}</span>
+              <span class="text-sm text-slate-100/95">${this.escapeHtml(stop)}</span>
+            </li>`;
+          })
           .join("");
         detailsCell.innerHTML = `
           <div class="text-xs uppercase tracking-[0.16em] text-cyan-100/80">Paradas de la linea</div>
-          <ul class="mt-2 grid gap-1 text-sm text-slate-100">${listItems}</ul>
+          <ul class="mt-2 flex flex-col gap-1">${listItems}</ul>
         `;
       }
 
