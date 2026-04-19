@@ -30,6 +30,9 @@ export class BusApp {
     this.expandedStopId = null;
     this.expandedLineId = null;
     this.stopArrivalsRequestToken = 0;
+    this.stopMapOverlayEl = null;
+    this.stopMapTitleEl = null;
+    this.stopMapContainerEl = null;
   }
 
   async init() {
@@ -467,6 +470,8 @@ export class BusApp {
   }
 
   setScreen(screen) {
+    this.closeStopMapPage();
+
     if (screen !== "lines") {
       this.expandedLineId = null;
     }
@@ -561,9 +566,11 @@ export class BusApp {
       this.stopsPageSize,
       this.expandedStopId,
       (stop) => this.toggleStopMap(stop),
+      (stop) => this.openStopMapPage(stop),
     );
     this.updateStopsPagination(pageMeta);
-    this.renderExpandedStopMap(pageMeta ? pageMeta.expandedMap : null);
+    this.destroyLeafletMap();
+    this.renderExpandedStopArrivals(pageMeta ? pageMeta.expandedMap : null);
   }
 
   toggleStopMap(stop) {
@@ -585,6 +592,88 @@ export class BusApp {
     const payload = this.buildExpandedMapPayload(expandedMap);
     this.mapManager.render(payload);
     this.renderExpandedStopArrivals(payload);
+  }
+
+  async openStopMapPage(stop) {
+    const lat = Number(stop && stop.lat);
+    const lon = Number(stop && stop.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      this.status.show("No hay coordenadas para mostrar el mapa", "err");
+      return;
+    }
+
+    await this.ensureStopLinesIndex();
+
+    this.ensureStopMapOverlay();
+    if (!this.stopMapOverlayEl || !this.stopMapContainerEl) return;
+
+    this.stopMapOverlayEl.classList.remove("hidden");
+    document.body.classList.add("overflow-hidden");
+
+    if (this.stopMapTitleEl) {
+      const safeName = String(stop && stop.name ? stop.name : "Parada");
+      const safeId = String(stop && stop.id ? stop.id : "");
+      this.stopMapTitleEl.textContent = safeId
+        ? `${safeName} (${safeId})`
+        : safeName;
+    }
+
+    const mapContainerId = this.stopMapContainerEl.id;
+    const mapRoutePanelId = "stopMapRoutePanel";
+    const payload = this.buildExpandedMapPayload({
+      stop,
+      mapContainerId,
+      mapRoutePanelId,
+      routeSummaryId: "",
+    });
+    this.mapManager.render(payload);
+  }
+
+  ensureStopMapOverlay() {
+    if (this.stopMapOverlayEl) return;
+
+    const overlay = document.createElement("div");
+    overlay.className = "fixed inset-0 z-[1200] hidden bg-slate-950";
+
+    const topBar = document.createElement("div");
+    topBar.className =
+      "flex h-14 items-center gap-3 border-b border-white/20 bg-slate-900/95 px-3 text-slate-100";
+
+    const backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className =
+      "rounded-xl border border-white/25 bg-white/10 px-3 py-1.5 text-sm font-semibold text-slate-100 transition hover:bg-white/15";
+    backBtn.textContent = "‹ Atras";
+    backBtn.addEventListener("click", () => this.closeStopMapPage());
+
+    const title = document.createElement("div");
+    title.className = "truncate text-sm font-semibold";
+    title.textContent = "Mapa";
+
+    topBar.appendChild(backBtn);
+    topBar.appendChild(title);
+
+    const mapContainer = document.createElement("div");
+    mapContainer.id = "stopMapLeafletContainer";
+    mapContainer.className = "h-[calc(100%-56px)] w-full";
+
+    overlay.appendChild(topBar);
+    overlay.appendChild(mapContainer);
+    document.body.appendChild(overlay);
+
+    this.stopMapOverlayEl = overlay;
+    this.stopMapTitleEl = title;
+    this.stopMapContainerEl = mapContainer;
+  }
+
+  closeStopMapPage() {
+    this.destroyLeafletMap();
+
+    if (this.stopMapOverlayEl) {
+      this.stopMapOverlayEl.classList.add("hidden");
+    }
+
+    document.body.classList.remove("overflow-hidden");
   }
 
   async renderExpandedStopArrivals(expandedMap) {
@@ -811,6 +900,13 @@ export class BusApp {
     const selectedStop = expandedMap.stop;
     const selectedStopId = String(selectedStop.id || "").trim();
     const stopLineIds = this.view.getStopLineValues(selectedStop);
+    const indexedStopLineIds = selectedStopId
+      ? this.view.getStopLineValues({
+          id: selectedStopId,
+          line:
+            (this.stopLinesIndex && this.stopLinesIndex[selectedStopId]) || "",
+        })
+      : [];
     const directionLineIds = selectedStopId
       ? Object.keys(
           (this.stopDirectionsIndex &&
@@ -821,7 +917,12 @@ export class BusApp {
     const activeFilterLineIds = Array.from(this.selectedStopLineIds || []);
 
     const selectedLineIds = Array.from(
-      new Set([...stopLineIds, ...directionLineIds, ...activeFilterLineIds]),
+      new Set([
+        ...stopLineIds,
+        ...indexedStopLineIds,
+        ...directionLineIds,
+        ...activeFilterLineIds,
+      ]),
     ).filter(Boolean);
 
     if (!selectedLineIds.length) {

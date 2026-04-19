@@ -244,6 +244,7 @@ export class BusView {
     pageSize = 25,
     expandedStopId = null,
     onToggleStopMap = null,
+    onOpenStopMapPage = null,
   ) {
     const { stopsTableBody } = this.dom;
     if (!stopsTableBody) return;
@@ -341,20 +342,32 @@ export class BusView {
         } else {
           const mapContainerId = this.getStopMapContainerId(stop.id);
           const stopArrivalsId = `${mapContainerId}-arrivals`;
-          const routeSummaryId = `${mapContainerId}-route-summary`;
-          const mapRoutePanelId = `${mapContainerId}-route-panel`;
+          const mapButtonId = `${mapContainerId}-open-map`;
+          const stopLineBadges = this.renderStopLineBadgesHtml(stop);
           detailsCell.innerHTML = `
-            <div class="mb-2 text-xs text-slate-300/80">Lat: ${lat.toFixed(6)} · Lon: ${lon.toFixed(6)}</div>
-            <div id="${this.escapeHtml(stopArrivalsId)}" class="mb-2 rounded-lg border border-white/15 bg-slate-900/35 px-3 py-2 text-xs text-slate-200">Proximos buses: consultando...</div>
-            <div id="${this.escapeHtml(routeSummaryId)}" class="mb-2 rounded-lg border border-white/15 bg-slate-900/35 px-3 py-2 text-xs text-slate-200">Ruta a pie: calcula la ruta para ver distancia y tiempos.</div>
-            <div id="${this.escapeHtml(mapContainerId)}" class="relative w-full overflow-auto rounded-xl border border-white/15" style="height: 32rem; resize: vertical; min-height: 32rem; max-height: 80vh;"></div>
+            <div class="rounded-xl border border-white/15 bg-slate-900/35 p-3">
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p class="text-sm font-semibold text-slate-100">${this.escapeHtml(stop.name || "Parada")}</p>
+                <span class="rounded-full bg-fuchsia-600 px-2 py-0.5 text-xs font-semibold text-white">ID ${this.escapeHtml(stop.id || "-")}</span>
+              </div>
+              <div class="mb-2 text-xs text-slate-300/85">Lat: ${lat.toFixed(6)} · Lon: ${lon.toFixed(6)}</div>
+              <div class="mb-2 text-xs text-slate-300/85">Lineas: ${stopLineBadges}</div>
+              <div id="${this.escapeHtml(stopArrivalsId)}" class="mb-3 rounded-lg border border-white/15 bg-slate-950/35 px-3 py-2 text-xs text-slate-200">Proximos buses: consultando...</div>
+              <button id="${this.escapeHtml(mapButtonId)}" type="button" class="rounded-xl border border-cyan-300/35 bg-cyan-500/15 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/25">Ver mapa</button>
+            </div>
           `;
+
+          const openMapBtn = detailsCell.querySelector(`#${mapButtonId}`);
+          if (openMapBtn && typeof onOpenStopMapPage === "function") {
+            openMapBtn.addEventListener("click", (event) => {
+              event.stopPropagation();
+              onOpenStopMapPage(stop);
+            });
+          }
+
           expandedMap = {
             stop,
-            mapContainerId,
             stopArrivalsId,
-            routeSummaryId,
-            mapRoutePanelId,
           };
         }
 
