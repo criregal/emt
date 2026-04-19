@@ -177,7 +177,7 @@ export class BusView {
               index % 2 === 0 ? "bg-slate-900/55" : "bg-slate-800/45";
             return `<li class="flex items-start gap-2 rounded-lg px-2.5 py-1.5 ${zebraClass}">
               <span class="mt-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950/80 text-[11px] font-semibold text-cyan-200">${index + 1}</span>
-              <span class="text-sm text-slate-100/95">${this.escapeHtml(stop)}</span>
+              <span class="text-sm text-slate-100/95">${this.renderLineStopTextTwoLines(stop)}</span>
             </li>`;
           })
           .join("");
@@ -204,6 +204,22 @@ export class BusView {
     const firstLine = this.escapeHtml(parts[0]);
     const secondLine = this.escapeHtml(parts.slice(1).join(" - "));
 
+    return `<span class="block">${firstLine}</span><span class="block text-slate-300">${secondLine}</span>`;
+  }
+
+  renderLineStopTextTwoLines(value) {
+    const rawText = String(value || "").trim();
+    if (!rawText) return "";
+
+    const textWithoutOrder = rawText.replace(/^\s*\d+\.\s*/, "").trim();
+    const parts = textWithoutOrder.split(/\s*-\s*/).filter(Boolean);
+
+    if (parts.length < 2) {
+      return this.escapeHtml(textWithoutOrder);
+    }
+
+    const firstLine = this.escapeHtml(parts[0]);
+    const secondLine = this.escapeHtml(parts.slice(1).join(" - "));
     return `<span class="block">${firstLine}</span><span class="block text-slate-300">${secondLine}</span>`;
   }
 
