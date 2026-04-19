@@ -1,488 +1,546 @@
-// URL WFS suministrada por el usuario
-const WFS_URL =
-  "https://geoportal.emtvalencia.es/geoserver/wfs?service=wfs&version=1.1.0&request=GetFeature&outputFormat=json&srsName=EPSG:4326&typeName=emt:Lineas";
-// Endpoint para obtener paradas de una línea; el usuario pidió que pasemos la línea seleccionada en 'linea'
-const PARADAS_URL_BASE =
-  "https://geoportal.emtvalencia.es/ciudadano/servicios/paradas_linea.php";
+const APP_CONFIG = {
+  wfsLinesUrl:
+    "https://geoportal.emtvalencia.es/geoserver/wfs?service=wfs&version=1.1.0&request=GetFeature&outputFormat=json&srsName=EPSG:4326&typeName=emt:Lineas",
+  wfsStopsUrl:
+    "https://geoportal.emtvalencia.es/geoserver/wfs?service=wfs&version=1.1.0&request=GetFeature&outPutFormat=json&srsName=EPSG:4326&typeName=emt:Paradas",
+  paradasUrlBase:
+    "https://geoportal.emtvalencia.es/ciudadano/servicios/paradas_linea.php",
+  paradasUsuario: "7gH8m45w7A",
+  corsProxy: "https://api.allorigins.win/raw?url=",
+  storageKey: "emt_lineas_v1",
+  storageStopsKey: "emt_paradas",
+  requestTimeoutMs: 10000,
+  proxyTimeoutMs: 12000,
+};
 
-const PARADAS_USUARIO = "7gH8m45w7A";
-
-// Estado
-let lines = []; // { id: ID_PUBLICO, name: NOMBRE_LINEA, color, stops: [] }
-let activeLineId = null;
-let fetchingStops = false;
-let allStopsData = null; // JSON con todas las paradas
-
-// DOM
-const linesList = document.getElementById("linesList");
-const stopsContainer = document.getElementById("stopsContainer");
-const currentLineName = document.getElementById("currentLineName");
-const currentLineInfo = document.getElementById("currentLineInfo");
-const newLineName = document.getElementById("newLineName");
-const addLineBtn = document.getElementById("addLineBtn");
-const addStopBtn = document.getElementById("addStopBtn");
-const saveBtn = document.getElementById("saveBtn");
-const clearBtn = document.getElementById("clearBtn");
-const searchStop = document.getElementById("searchStop");
-const statusContainer = document.getElementById("statusContainer");
-const reloadBtn = document.getElementById("reloadBtn");
-
-// Helpers UI
-function showStatus(message, type = "info") {
-  statusContainer.textContent = message;
-  statusContainer.className =
-    "status " + (type === "ok" ? "ok" : type === "err" ? "err" : "info");
-  console.log("[Status]", message);
-}
-
-function uid(prefix = "id") {
-  return prefix + "-" + Math.random().toString(36).slice(2, 9);
-}
-
-// Storage key
-const STORAGE_KEY = "emt_lineas_v1";
-
-function saveToStorage() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
-    showStatus("Líneas guardadas en localStorage", "ok");
-  } catch (e) {
-    console.error("Error guardando en storage", e);
-    showStatus("Error al guardar en localStorage", "err");
+class DomRefs {
+  constructor() {
+    this.linesList = document.getElementById("linesList");
+    this.stopsContainer = document.getElementById("stopsContainer");
+    this.currentLineName = document.getElementById("currentLineName");
+    this.currentLineInfo = document.getElementById("currentLineInfo");
+    this.saveBtn = document.getElementById("saveBtn");
+    this.clearBtn = document.getElementById("clearBtn");
+    this.searchStop = document.getElementById("searchStop");
+    this.statusContainer = document.getElementById("statusContainer");
+    this.reloadBtn = document.getElementById("reloadBtn");
   }
 }
 
-function loadFromStorage() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length) {
-      lines = parsed;
-      return true;
-    }
-    return false;
-  } catch (e) {
-    console.error("Error leyendo localStorage", e);
-    return false;
+class StatusPresenter {
+  constructor(statusContainer) {
+    this.statusContainer = statusContainer;
+  }
+
+  show(message, type = "info") {
+    if (!this.statusContainer) return;
+    this.statusContainer.textContent = message;
+    this.statusContainer.className = `status ${type === "ok" ? "ok" : type === "err" ? "err" : "info"}`;
+    console.log("[Status]", message);
   }
 }
 
-// Fetch with timeout
-async function fetchWithTimeout(url, options = {}, timeout = 10000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  try {
-    const res = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-    clearTimeout(id);
-    return res;
-  } catch (e) {
-    clearTimeout(id);
-    throw e;
+class StorageService {
+  constructor(storageKey, status) {
+    this.storageKey = storageKey;
+    this.status = status;
   }
-}
 
-async function fetchAllStops() {
-  try {
-    const url =
-      "https://geoportal.emtvalencia.es/geoserver/wfs?service=wfs&version=1.1.0&request=GetFeature&outPutFormat=json&srsName=EPSG:4326&typeName=emt:Paradas";
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Error fetch Paradas");
-    allStopsData = await res.json();
-    localStorage.setItem("emt_paradas", JSON.stringify(allStopsData));
-    console.log("Todas las paradas cargadas y guardadas en localStorage");
-  } catch (e) {
-    console.error("Error al cargar todas las paradas", e);
-  }
-}
-
-// Intentar leer el WFS: primero directamente (CORS), si falla por CORS o red, intentar mediante proxy público AllOrigins
-async function fetchLinesFromWFS() {
-  showStatus("Intentando cargar líneas desde WFS (directo)...");
-  try {
-    const res = await fetchWithTimeout(WFS_URL, { cache: "no-store" }, 10000);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const geo = await res.json();
-    validateAndSetLinesFromGeoJSON(geo, "directo");
-    return true;
-  } catch (err) {
-    console.warn(
-      "Error fetch directo WFS:",
-      err && err.message ? err.message : err
-    );
-    showStatus("Fetch directo falló: intentando proxy CORS...", "info");
-    // Fallback: AllOrigins (public proxy)
+  saveLines(lines, options = {}) {
+    const { silent = false } = options;
     try {
-      const proxy =
-        "https://api.allorigins.win/raw?url=" + encodeURIComponent(WFS_URL);
-      const res2 = await fetchWithTimeout(proxy, { cache: "no-store" }, 12000);
-      if (!res2.ok) throw new Error("Proxy HTTP " + res2.status);
-      const geo2 = await res2.json();
-      validateAndSetLinesFromGeoJSON(geo2, "proxy");
-      return true;
-    } catch (err2) {
-      console.error(
-        "Error fetch via proxy:",
-        err2 && err2.message ? err2.message : err2
-      );
-      // último recurso: intentar cargar desde localStorage
-      const ok = loadFromStorage();
-      if (ok) {
-        showStatus(
-          "WFS no disponible: cargadas líneas desde localStorage",
-          "ok"
-        );
-        activeLineId = lines.length ? lines[0].id : null;
-        renderLines();
-        renderStops();
-        return false;
+      localStorage.setItem(this.storageKey, JSON.stringify(lines));
+      if (!silent) {
+        this.status.show("Líneas guardadas en localStorage", "ok");
       }
-      showStatus("No se pudieron cargar líneas (WFS y proxy fallaron).", "err");
-      lines = [];
-      activeLineId = null;
-      renderLines();
-      renderStops();
-      return false;
+    } catch (error) {
+      console.error("Error guardando en storage", error);
+      if (!silent) {
+        this.status.show("Error al guardar en localStorage", "err");
+      }
+    }
+  }
+
+  loadLines() {
+    try {
+      const raw = localStorage.getItem(this.storageKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.error("Error leyendo localStorage", error);
+      return [];
+    }
+  }
+
+  clearLines() {
+    localStorage.removeItem(this.storageKey);
+  }
+
+  saveStopsSnapshot(key, payload) {
+    try {
+      localStorage.setItem(key, JSON.stringify(payload));
+    } catch (error) {
+      console.error("No se pudo guardar snapshot de paradas", error);
     }
   }
 }
 
-// Validación y mapeo de GeoJSON -> lines
-function validateAndSetLinesFromGeoJSON(geo, sourceLabel) {
-  if (!geo || !Array.isArray(geo.features)) {
-    throw new Error("Respuesta WFS inválida: no hay features");
-  }
-  const mapped = geo.features.map((f) => {
-    const p = f.properties || {};
-    // el usuario pidió explícitamente ID_PUBLICO y NOMBRE_LINEA
-    const idPublico =
-      p.ID_PUBLICO !== undefined && p.ID_PUBLICO !== null
-        ? p.ID_PUBLICO
-        : p.ID || p.id || p.CODIGO || uid("L");
-    const nombre =
-      p.NOMBRE_LINEA !== undefined && p.NOMBRE_LINEA !== null
-        ? p.NOMBRE_LINEA
-        : p.NOMBRE || p.nombre || String(idPublico);
-    return {
-      id: String(idPublico),
-      name: String(nombre),
-      // color determinista para mejor UX: hash simple del id
-      color: colorFromString(String(idPublico)),
-      // paradas locales (vacío si no se cargan desde otro WFS)
-      stops: [],
-    };
-  });
-  lines = mapped;
-  activeLineId = lines.length ? lines[0].id : null;
-  // seleccionar la primera línea automáticamente y cargar sus paradas
-  if (activeLineId) {
-    selectLine(activeLineId);
-  } else {
-    renderLines();
-    renderStops();
-  }
+class HttpClient {
+  static async fetchWithTimeout(url, options = {}, timeout = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  saveToStorage();
-  showStatus(
-    "Cargadas " +
-      lines.length +
-      " líneas desde " +
-      sourceLabel +
-      " (se usan ID_PUBLICO y NOMBRE_LINEA).",
-    "ok"
-  );
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  }
 }
 
-// Color hashing helper
-function colorFromString(s) {
-  // simple deterministic color from string
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h << 5) - h + s.charCodeAt(i);
-  const c = (h >>> 0) % 0xffffff;
-  return "#" + c.toString(16).padStart(6, "0");
-}
-
-// Renderers
-function renderLines() {
-  linesList.innerHTML = "";
-  if (!lines.length) {
-    const empty = document.createElement("div");
-    empty.className = "muted";
-    empty.textContent = "No hay líneas cargadas";
-    linesList.appendChild(empty);
-    return;
+class EMTApi {
+  constructor(config) {
+    this.config = config;
   }
-  lines.forEach((l) => {
-    const div = document.createElement("div");
-    div.className = "line-item" + (l.id === activeLineId ? " active" : "");
-    div.dataset.id = l.id;
-    div.setAttribute("role", "listitem");
-    // Mostrar NOMBRE_LINEA y ID_PUBLICO (id)
-    div.innerHTML = `
-          <div class="line-dot" style="background:${l.color}"></div>
-          <div style="flex:1">${escapeHtml(
-            l.name
-          )} <div class="muted" style="font-size:12px">(ID: ${escapeHtml(
-      l.id
-    )} — ${l.stops.length} paradas)</div></div>
-        `;
-    div.addEventListener("click", () => selectLine(l.id));
-    linesList.appendChild(div);
-  });
-}
 
-function renderStops() {
-  stopsContainer.innerHTML = "";
-  const line = lines.find((x) => x.id === activeLineId);
-  if (!line) {
-    currentLineName.textContent = "Selecciona una línea";
-    currentLineInfo.textContent = "Paradas de la línea";
-    return;
+  async fetchLinesDirect() {
+    return this.fetchLinesFromUrl(
+      this.config.wfsLinesUrl,
+      this.config.requestTimeoutMs,
+    );
   }
-  currentLineName.textContent = line.name + " (ID: " + line.id + ")";
-  currentLineInfo.textContent = `${line.stops.length} paradas`;
 
-  const query =
-    searchStop && searchStop.value ? searchStop.value.trim().toLowerCase() : "";
-  line.stops.forEach((stop, idx) => {
-    if (query && !stop.toLowerCase().includes(query)) return;
-    const el = document.createElement("div");
-    el.className = "stop";
-    el.innerHTML = `<div>${escapeHtml(stop)}</div>`;
-    stopsContainer.appendChild(el);
-  });
+  async fetchLinesViaProxy() {
+    const url =
+      this.config.corsProxy + encodeURIComponent(this.config.wfsLinesUrl);
+    return this.fetchLinesFromUrl(url, this.config.proxyTimeoutMs);
+  }
+
+  async fetchLinesFromUrl(url, timeoutMs) {
+    const response = await HttpClient.fetchWithTimeout(
+      url,
+      { cache: "no-store" },
+      timeoutMs,
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async fetchStopsForLineDirect(lineId) {
+    const url = this.getStopsUrl(lineId);
+    return this.fetchStopsFromUrl(url, this.config.requestTimeoutMs);
+  }
+
+  async fetchStopsForLineViaProxy(lineId) {
+    const originalUrl = this.getStopsUrl(lineId);
+    const proxyUrl = this.config.corsProxy + encodeURIComponent(originalUrl);
+    return this.fetchStopsFromUrl(proxyUrl, this.config.proxyTimeoutMs);
+  }
+
+  async fetchStopsFromUrl(url, timeoutMs) {
+    const response = await HttpClient.fetchWithTimeout(
+      url,
+      { cache: "no-store" },
+      timeoutMs,
+    );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const rawText = await response.text();
+    return this.parseStopsXml(rawText);
+  }
+
+  async fetchAllStopsSnapshot() {
+    const response = await fetch(this.config.wfsStopsUrl);
+    if (!response.ok) {
+      throw new Error("Error fetch Paradas");
+    }
+    return response.json();
+  }
+
+  getStopsUrl(lineId) {
+    const params =
+      "?usuario=" +
+      encodeURIComponent(this.config.paradasUsuario) +
+      "&linea=" +
+      encodeURIComponent(lineId) +
+      "&lang=es";
+    return this.config.paradasUrlBase + params;
+  }
+
+  parseStopsXml(xmlText) {
+    try {
+      const xml = new DOMParser().parseFromString(
+        String(xmlText || "").trim(),
+        "application/xml",
+      );
+      if (xml.getElementsByTagName("parsererror").length > 0) {
+        return [];
+      }
+
+      const paradaNodes = xml.getElementsByTagName("parada");
+      const stops = [];
+      for (let index = 0; index < paradaNodes.length; index++) {
+        const node = paradaNodes[index];
+        const orden = this.readXmlText(node, "orden") || String(index + 1);
+        const nombre =
+          this.readXmlText(node, "nombre_parada") ||
+          this.readXmlText(node, "nombre") ||
+          this.readXmlText(node, "name");
+        const stopId =
+          this.readXmlText(node, "id_parada") || this.readXmlText(node, "id");
+
+        if (nombre) {
+          stops.push(`${orden}. ${nombre} (${stopId})`);
+        } else if (stopId) {
+          stops.push(`${orden}. ${stopId}`);
+        }
+      }
+      return stops;
+    } catch (error) {
+      console.warn("parseStopsXml failed", error);
+      return [];
+    }
+  }
+
+  readXmlText(parent, tagName) {
+    const node = parent.getElementsByTagName(tagName)[0];
+    return node ? String(node.textContent || "").trim() : "";
+  }
 }
 
-// Escapar texto para inyección segura en HTML
-function escapeHtml(str) {
-  return String(str).replace(
-    /[&<>\"']/g,
-    (c) =>
-      ({
+class BusView {
+  constructor(domRefs) {
+    this.dom = domRefs;
+  }
+
+  renderLines(lines, activeLineId, onLineClick) {
+    const { linesList } = this.dom;
+    if (!linesList) return;
+
+    linesList.innerHTML = "";
+    if (!lines.length) {
+      const emptyState = document.createElement("div");
+      emptyState.className = "muted";
+      emptyState.textContent = "No hay líneas cargadas";
+      linesList.appendChild(emptyState);
+      return;
+    }
+
+    lines.forEach((line) => {
+      const card = document.createElement("div");
+      card.className = `line-item${line.id === activeLineId ? " active" : ""}`;
+      card.dataset.id = line.id;
+      card.setAttribute("role", "listitem");
+      card.innerHTML = `
+        <div class="line-dot" style="background:${line.color}"></div>
+        <div style="flex:1">${this.escapeHtml(line.name)}
+          <div class="muted" style="font-size:12px">
+            (ID: ${this.escapeHtml(line.id)} - ${line.stops.length} paradas)
+          </div>
+        </div>
+      `;
+      card.addEventListener("click", () => onLineClick(line.id));
+      linesList.appendChild(card);
+    });
+  }
+
+  renderStops(line, query = "") {
+    const { stopsContainer, currentLineName, currentLineInfo } = this.dom;
+    if (!stopsContainer || !currentLineName || !currentLineInfo) return;
+
+    stopsContainer.innerHTML = "";
+
+    if (!line) {
+      currentLineName.textContent = "Selecciona una línea";
+      currentLineInfo.textContent = "Paradas de la línea";
+      return;
+    }
+
+    currentLineName.textContent = `${line.name} (ID: ${line.id})`;
+    currentLineInfo.textContent = `${line.stops.length} paradas`;
+
+    line.stops
+      .filter((stopName) => {
+        if (!query) return true;
+        return stopName.toLowerCase().includes(query);
+      })
+      .forEach((stopName) => {
+        const item = document.createElement("div");
+        item.className = "stop";
+        item.innerHTML = `<div>${this.escapeHtml(stopName)}</div>`;
+        stopsContainer.appendChild(item);
+      });
+  }
+
+  getSearchQuery() {
+    if (!this.dom.searchStop) return "";
+    return String(this.dom.searchStop.value || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  escapeHtml(value) {
+    return String(value).replace(/[&<>\"']/g, (char) => {
+      const map = {
         "&": "&amp;",
         "<": "&lt;",
         ">": "&gt;",
         '"': "&quot;",
         "'": "&#39;",
-      }[c])
-  );
-}
-
-// Acciones
-function collapseSpaces(s) {
-  var out = "";
-  var last = false;
-  for (var i = 0; i < s.length; i++) {
-    var ch = s[i];
-    if (ch.trim() === "") {
-      if (!last) {
-        out += " ";
-        last = true;
-      }
-    } else {
-      out += ch;
-      last = false;
-    }
-  }
-  return out.trim();
-}
-
-function startsWithNumberPrefix(s) {
-  var i = 0;
-  while (
-    i < s.length &&
-    (s[i] === " " || s[i] == "." || s[i] == "-" || (s[i] >= "0" && s[i] <= "9"))
-  ) {
-    i++;
-  }
-  return s.slice(i).trim();
-}
-
-function parseStopsFromXML(html) {
-  try {
-    const raw = String(html || "").trim();
-    const xml = new DOMParser().parseFromString(raw, "application/xml");
-    if (xml.getElementsByTagName("parsererror").length === 0) {
-      const paradaNodes = xml.getElementsByTagName("parada");
-      const stops = [];
-      for (let i = 0; i < paradaNodes.length; i++) {
-        const p = paradaNodes[i];
-        const getText = (tag) => {
-          const n = p.getElementsByTagName(tag)[0];
-          return n ? String(n.textContent || "").trim() : "";
-        };
-        const nombre =
-          getText("nombre_parada") || getText("nombre") || getText("name");
-        const orden = getText("orden") || String(i + 1);
-        const id_parada = getText("id_parada") || getText("id");
-        if (nombre) stops.push(orden + ". " + nombre + " (" + id_parada + ")");
-        else if (id_parada) stops.push(orden + ". " + id_parada);
-      }
-      return stops;
-    }
-  } catch (e) {
-    console.warn("parseStopsFromXML failed", e);
-  }
-  return null;
-}
-
-async function fetchStopsForLine(lineId) {
-  if (!lineId) return;
-  if (fetchingStops) return;
-  fetchingStops = true;
-  showStatus("Cargando paradas para la línea " + lineId + "...");
-  var url =
-    PARADAS_URL_BASE +
-    "?usuario=" +
-    encodeURIComponent(PARADAS_USUARIO) +
-    "&linea=" +
-    encodeURIComponent(lineId) +
-    "&lang=es";
-  try {
-    var res = await fetchWithTimeout(url, { cache: "no-store" }, 10000);
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    var text = await res.text();
-    var stops = parseStopsFromXML(text);
-    var line = lines.find(function (l) {
-      return l.id === lineId;
+      };
+      return map[char] || char;
     });
-    if (line) {
-      const idx = lines.findIndex((l) => l.id === lineId);
-      const normalized = stops.map((s) => String(s).trim()).filter(Boolean);
-      if (idx !== -1) {
-        lines[idx].stops = normalized;
-        console.debug(
-          "Assigned stops to line",
-          lineId,
-          lines[idx].stops.length
-        );
-      } else {
-        // fallback: attach directly to found object
-        line.stops = normalized;
-        console.debug(
-          "Assigned stops to line (fallback)",
-          lineId,
-          line.stops.length
-        );
-      }
-      renderLines();
-      renderStops();
-      console.debug(
-        "Lines snapshot after assign:",
-        lines.map((l) => ({ id: l.id, stops: (l.stops || []).length }))
-      );
-    }
-    renderStops();
-    saveToStorage();
-    showStatus(
-      "Paradas cargadas desde servidor (" + stops.length + " entradas)",
-      "ok"
-    );
-  } catch (err) {
-    console.warn(
-      "Error cargando paradas directo:",
-      err && err.message ? err.message : err
-    );
-    showStatus("Fetch directo de paradas falló: intentando proxy...", "info");
+  }
+}
+
+class BusApp {
+  constructor(config) {
+    this.config = config;
+    this.dom = new DomRefs();
+    this.status = new StatusPresenter(this.dom.statusContainer);
+    this.storage = new StorageService(this.config.storageKey, this.status);
+    this.api = new EMTApi(this.config);
+    this.view = new BusView(this.dom);
+
+    this.lines = [];
+    this.activeLineId = null;
+    this.fetchingStops = false;
+  }
+
+  async init() {
+    this.bindEvents();
     try {
-      var proxy =
-        "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
-      var res2 = await fetchWithTimeout(proxy, { cache: "no-store" }, 12000);
-      if (!res2.ok) throw new Error("Proxy HTTP " + res2.status);
-      var text2 = await res2.text();
-      var stops2 = parseStopsFromXML(text2);
-      var line2 = lines.find(function (l) {
-        return l.id === lineId;
+      await this.fetchLinesFromWFS();
+      await this.prefetchStopsSnapshot();
+    } catch (error) {
+      console.error("Inicio: error al cargar líneas", error);
+    }
+  }
+
+  bindEvents() {
+    if (this.dom.saveBtn) {
+      this.dom.saveBtn.addEventListener("click", () => {
+        this.storage.saveLines(this.lines);
       });
-      if (line2) {
-        const idx2 = lines.findIndex((l) => l.id === lineId);
-        const normalized2 = stops2.map((s) => String(s).trim()).filter(Boolean);
-        if (idx2 !== -1) {
-          lines[idx2].stops = normalized2;
-          console.debug(
-            "Assigned stops (proxy) to line",
-            lineId,
-            lines[idx2].stops.length
-          );
-        } else {
-          line2.stops = normalized2;
-          console.debug(
-            "Assigned stops (proxy) to line (fallback)",
-            lineId,
-            line2.stops.length
-          );
-        }
-        renderLines();
-        renderStops();
-        console.debug(
-          "Lines snapshot after proxy assign:",
-          lines.map((l) => ({ id: l.id, stops: (l.stops || []).length }))
+    }
+
+    if (this.dom.clearBtn) {
+      this.dom.clearBtn.addEventListener("click", () => {
+        if (!confirm("Borrar datos locales (localStorage)?")) return;
+        this.storage.clearLines();
+        this.lines = [];
+        this.activeLineId = null;
+        this.render();
+        this.status.show("Datos locales borrados", "ok");
+      });
+    }
+
+    if (this.dom.searchStop) {
+      this.dom.searchStop.addEventListener("input", () => this.renderStops());
+    }
+
+    if (this.dom.reloadBtn) {
+      this.dom.reloadBtn.addEventListener("click", () => {
+        this.fetchLinesFromWFS();
+      });
+    }
+  }
+
+  async fetchLinesFromWFS() {
+    this.status.show("Intentando cargar líneas desde WFS (directo)...");
+    try {
+      const geoJson = await this.api.fetchLinesDirect();
+      this.setLinesFromGeoJson(geoJson, "directo");
+      return true;
+    } catch (directError) {
+      console.warn("Error fetch directo WFS", directError);
+      this.status.show("Fetch directo falló: intentando proxy CORS...", "info");
+    }
+
+    try {
+      const geoJsonProxy = await this.api.fetchLinesViaProxy();
+      this.setLinesFromGeoJson(geoJsonProxy, "proxy");
+      return true;
+    } catch (proxyError) {
+      console.error("Error fetch via proxy", proxyError);
+    }
+
+    const storedLines = this.storage.loadLines();
+    if (storedLines.length) {
+      this.lines = storedLines;
+      this.activeLineId = this.lines[0].id;
+      this.render();
+      this.status.show(
+        "WFS no disponible: cargadas líneas desde localStorage",
+        "ok",
+      );
+      return false;
+    }
+
+    this.lines = [];
+    this.activeLineId = null;
+    this.render();
+    this.status.show(
+      "No se pudieron cargar líneas (WFS y proxy fallaron).",
+      "err",
+    );
+    return false;
+  }
+
+  setLinesFromGeoJson(geoJson, sourceLabel) {
+    if (!geoJson || !Array.isArray(geoJson.features)) {
+      throw new Error("Respuesta WFS inválida: no hay features");
+    }
+
+    this.lines = geoJson.features.map((feature) => {
+      const properties = feature.properties || {};
+      const rawId =
+        properties.ID_PUBLICO !== undefined && properties.ID_PUBLICO !== null
+          ? properties.ID_PUBLICO
+          : properties.ID ||
+            properties.id ||
+            properties.CODIGO ||
+            this.createUid();
+      const rawName =
+        properties.NOMBRE_LINEA !== undefined &&
+        properties.NOMBRE_LINEA !== null
+          ? properties.NOMBRE_LINEA
+          : properties.NOMBRE || properties.nombre || String(rawId);
+
+      return {
+        id: String(rawId),
+        name: String(rawName),
+        color: this.colorFromString(String(rawId)),
+        stops: [],
+      };
+    });
+
+    this.activeLineId = this.lines.length ? this.lines[0].id : null;
+    this.storage.saveLines(this.lines);
+    this.render();
+    this.status.show(
+      `Cargadas ${this.lines.length} líneas desde ${sourceLabel} (se usan ID_PUBLICO y NOMBRE_LINEA).`,
+      "ok",
+    );
+
+    if (this.activeLineId) {
+      this.selectLine(this.activeLineId);
+    }
+  }
+
+  async prefetchStopsSnapshot() {
+    try {
+      const data = await this.api.fetchAllStopsSnapshot();
+      this.storage.saveStopsSnapshot(this.config.storageStopsKey, data);
+      console.log("Todas las paradas cargadas y guardadas en localStorage");
+    } catch (error) {
+      console.error("Error al cargar todas las paradas", error);
+    }
+  }
+
+  render() {
+    this.view.renderLines(this.lines, this.activeLineId, (lineId) => {
+      this.selectLine(lineId);
+    });
+    this.renderStops();
+  }
+
+  renderStops() {
+    const currentLine = this.lines.find(
+      (line) => line.id === this.activeLineId,
+    );
+    this.view.renderStops(currentLine, this.view.getSearchQuery());
+  }
+
+  async selectLine(lineId) {
+    if (!lineId) return;
+    const exists = this.lines.some((line) => line.id === lineId);
+    if (!exists) return;
+
+    this.activeLineId = lineId;
+    this.render();
+    await this.loadStopsForLine(lineId);
+  }
+
+  async loadStopsForLine(lineId) {
+    if (this.fetchingStops || !lineId) return;
+    this.fetchingStops = true;
+    this.status.show(`Cargando paradas para la línea ${lineId}...`);
+
+    let stops = [];
+    try {
+      stops = await this.api.fetchStopsForLineDirect(lineId);
+      this.status.show(
+        `Paradas cargadas desde servidor (${stops.length} entradas)`,
+        "ok",
+      );
+    } catch (directError) {
+      console.warn("Error cargando paradas directo", directError);
+      this.status.show(
+        "Fetch directo de paradas falló: intentando proxy...",
+        "info",
+      );
+      try {
+        stops = await this.api.fetchStopsForLineViaProxy(lineId);
+        this.status.show(
+          `Paradas cargadas vía proxy (${stops.length} entradas)`,
+          "ok",
         );
+      } catch (proxyError) {
+        console.error("Error fetch paradas via proxy", proxyError);
+        this.status.show(
+          `No se pudieron cargar paradas para la línea ${lineId}`,
+          "err",
+        );
+        this.fetchingStops = false;
+        return;
       }
-      renderStops();
-      saveToStorage();
-      showStatus(
-        "Paradas cargadas vía proxy (" + stops2.length + " entradas)",
-        "ok"
-      );
-    } catch (err2) {
-      console.error(
-        "Error fetch paradas via proxy:",
-        err2 && err2.message ? err2.message : err2
-      );
-      showStatus(
-        "No se pudieron cargar paradas para la línea " + lineId,
-        "err"
-      );
     }
-  } finally {
-    fetchingStops = false;
+
+    const normalized = stops.map((item) => String(item).trim()).filter(Boolean);
+    const target = this.lines.find((line) => line.id === lineId);
+    if (target) {
+      target.stops = normalized;
+    }
+
+    this.storage.saveLines(this.lines, { silent: true });
+    this.render();
+    this.fetchingStops = false;
+  }
+
+  getLinesSnapshot() {
+    return JSON.parse(JSON.stringify(this.lines));
+  }
+
+  createUid(prefix = "L") {
+    return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  colorFromString(value) {
+    let hash = 0;
+    for (let index = 0; index < value.length; index++) {
+      hash = (hash << 5) - hash + value.charCodeAt(index);
+    }
+    const colorNum = (hash >>> 0) % 0xffffff;
+    return `#${colorNum.toString(16).padStart(6, "0")}`;
   }
 }
 
-function selectLine(id) {
-  activeLineId = id;
-  renderLines();
-  renderStops();
-  fetchStopsForLine(id);
-}
+const app = new BusApp(APP_CONFIG);
+app.init();
 
-// Eventos UI
-
-if (saveBtn) saveBtn.addEventListener("click", saveToStorage);
-if (clearBtn)
-  clearBtn.addEventListener("click", () => {
-    if (confirm("Borrar datos locales (localStorage)?")) {
-      localStorage.removeItem(STORAGE_KEY);
-      lines = [];
-      activeLineId = null;
-      renderLines();
-      renderStops();
-      showStatus("Datos locales borrados", "ok");
-    }
-  });
-if (searchStop) searchStop.addEventListener("input", renderStops);
-if (reloadBtn)
-  reloadBtn.addEventListener("click", () => {
-    fetchLinesFromWFS();
-  });
-
-// Al iniciar: intentar siempre cargar del endpoint WFS
-(async () => {
-  try {
-    await fetchLinesFromWFS();
-    await fetchAllStops();
-  } catch (e) {
-    console.error("Inicio: error al cargar líneas:", e);
-  }
-})();
-
-// Exponer API mínima para debugging
 window.BusApp = {
-  getLines: () => JSON.parse(JSON.stringify(lines)),
-  fetchLinesFromWFS,
-  selectLine,
+  getLines: () => app.getLinesSnapshot(),
+  fetchLinesFromWFS: () => app.fetchLinesFromWFS(),
+  selectLine: (lineId) => app.selectLine(lineId),
 };
