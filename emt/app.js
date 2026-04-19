@@ -528,7 +528,34 @@ export class BusApp {
   }
 
   renderExpandedStopMap(expandedMap) {
-    this.mapManager.render(expandedMap);
+    const payload = this.buildExpandedMapPayload(expandedMap);
+    this.mapManager.render(payload);
+  }
+
+  buildExpandedMapPayload(expandedMap) {
+    if (!expandedMap || !expandedMap.stop) return expandedMap;
+
+    const selectedStop = expandedMap.stop;
+    const selectedLineIds = this.view.getStopLineValues(selectedStop);
+    if (!selectedLineIds.length) {
+      return {
+        ...expandedMap,
+        selectedLineIds: [],
+        lineStops: [],
+      };
+    }
+
+    const selectedLineSet = new Set(selectedLineIds);
+    const lineStops = this.allStops.filter((stop) => {
+      const stopLineIds = this.view.getStopLineValues(stop);
+      return stopLineIds.some((lineId) => selectedLineSet.has(lineId));
+    });
+
+    return {
+      ...expandedMap,
+      selectedLineIds,
+      lineStops,
+    };
   }
 
   destroyLeafletMap() {
