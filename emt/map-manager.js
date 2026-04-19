@@ -18,6 +18,9 @@ export class LeafletMapManager {
     this.routeSummaryElementId = "";
     this.mapRoutePanelElementId = "";
     this.routeTargetStop = null;
+    this.userMarker = null;
+    this.realtimeLocationEnabled = false;
+    this.realtimeLocationIntervalId = null;
   }
 
   render(expandedMap) {
@@ -224,6 +227,10 @@ export class LeafletMapManager {
           <button type="button" data-map-action="center-user" class="rounded-md border border-white/20 bg-cyan-500/20 px-2 py-1 font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
           <button type="button" data-map-action="route-user-stop" class="rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a pie</button>
           <button type="button" data-map-action="fullscreen" class="rounded-md border border-emerald-300/30 bg-emerald-500/20 px-2 py-1 font-semibold text-emerald-100 hover:bg-emerald-500/30">Pantalla completa</button>
+            <label class="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
+              <input type="checkbox" data-map-action="realtime-location" class="h-3.5 w-3.5 accent-cyan-400" />
+              Tiempo real
+            </label>
         </div>
       `;
 
@@ -258,6 +265,16 @@ export class LeafletMapManager {
           }
         });
       });
+
+      const realtimeSwitch = container.querySelector(
+        'input[data-map-action="realtime-location"]',
+      );
+      if (realtimeSwitch) {
+        realtimeSwitch.checked = !!this.realtimeLocationEnabled;
+        realtimeSwitch.addEventListener("change", () => {
+          this.toggleRealtimeLocation(map, !!realtimeSwitch.checked);
+        });
+      }
 
       return container;
     };
@@ -330,15 +347,19 @@ export class LeafletMapManager {
 
         this.userPoint = window.L.latLng(userLat, userLon);
 
-        const userMarker = window.L.circleMarker([userLat, userLon], {
-          radius: 7,
-          color: "#22d3ee",
-          weight: 2,
-          fillColor: "#0891b2",
-          fillOpacity: 0.9,
-        })
-          .addTo(map)
-          .bindPopup("Tu ubicación actual");
+        if (this.userMarker && map.hasLayer && map.hasLayer(this.userMarker)) {
+          this.userMarker.setLatLng([userLat, userLon]);
+        } else {
+          this.userMarker = window.L.circleMarker([userLat, userLon], {
+            radius: 7,
+            color: "#22d3ee",
+            weight: 2,
+            fillColor: "#0891b2",
+            fillOpacity: 0.9,
+          })
+            .addTo(map)
+            .bindPopup("Tu ubicación actual");
+        }
 
         if (focusOnUser) {
           map.setView(this.userPoint, Math.max(map.getZoom(), 16));
@@ -356,8 +377,6 @@ export class LeafletMapManager {
             showStatusOnError,
           });
         }
-
-        return userMarker;
       },
       (error) => {
         console.warn("No se pudo obtener la ubicación del usuario", error);
@@ -371,6 +390,39 @@ export class LeafletMapManager {
         maximumAge: 30000,
       },
     );
+  }
+
+  toggleRealtimeLocation(map, enabled) {
+    this.realtimeLocationEnabled = !!enabled;
+
+    if (!this.realtimeLocationEnabled) {
+      this.stopRealtimeLocationUpdates();
+      this.status.show("Ubicación en tiempo real desactivada", "info");
+      return;
+    }
+
+    this.stopRealtimeLocationUpdates();
+    this.status.show("Ubicación en tiempo real activada", "ok");
+
+    const tick = () => {
+      if (!this.currentMap || this.currentMap !== map) return;
+      this.addUserLocationMarker(map, {
+        fitToInclude: false,
+        focusOnUser: false,
+        showStatusOnError: false,
+        drawRouteToStop: true,
+      });
+    };
+
+    tick();
+    this.realtimeLocationIntervalId = window.setInterval(tick, 5000);
+  }
+
+  stopRealtimeLocationUpdates() {
+    if (this.realtimeLocationIntervalId !== null) {
+      clearInterval(this.realtimeLocationIntervalId);
+      this.realtimeLocationIntervalId = null;
+    }
   }
 
   openFullscreenMap() {
@@ -816,6 +868,18 @@ export class LeafletMapManager {
   }
 
   destroy() {
+    this.stopRealtimeLocationUpdates();
+    this.realtimeLocationEnabled = false;
+
+    if (this.currentMap && this.userMarker) {
+      try {
+        this.currentMap.removeLayer(this.userMarker);
+      } catch (error) {
+        // Ignore marker cleanup errors on destroyed maps.
+      }
+    }
+    this.userMarker = null;
+
     this.topMenuControl = null;
     this.userPoint = null;
     this.selectedStopPoint = null;
