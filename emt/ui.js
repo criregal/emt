@@ -109,7 +109,7 @@ export class BusView {
 
     linesTableBody.innerHTML = "";
     if (!filtered.length) {
-      this.renderEmptyTableRow(linesTableBody, 4, "No hay líneas para mostrar");
+      this.renderEmptyTableRow(linesTableBody, 2, "No hay líneas para mostrar");
       return;
     }
 
@@ -117,20 +117,9 @@ export class BusView {
       const row = document.createElement("tr");
       row.className = "hover:bg-white/10";
       row.innerHTML = `
-        <td class="px-4 py-3 font-semibold text-cyan-200">${this.escapeHtml(line.id)}</td>
+        <td class="px-4 py-3"><span class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">${this.escapeHtml(line.id)}</span></td>
         <td class="px-4 py-3 text-slate-100">${this.escapeHtml(line.name)}</td>
-        <td class="px-4 py-3 text-slate-300">${line.stops.length}</td>
-        <td class="px-4 py-3">
-          <button data-line-id="${this.escapeHtml(line.id)}" class="load-stops-btn rounded-xl border border-cyan-300/30 bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/30">
-            Cargar paradas
-          </button>
-        </td>
       `;
-
-      const actionBtn = row.querySelector(".load-stops-btn");
-      if (actionBtn) {
-        actionBtn.addEventListener("click", () => onLoadStops(line.id));
-      }
 
       linesTableBody.appendChild(row);
     });
