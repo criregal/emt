@@ -62,7 +62,9 @@ export class LeafletMapManager {
       id: String(expandedMap.stop.id || ""),
       name: String(expandedMap.stop.name || "Parada"),
     };
-    this.currentArrivalsRows = [{ label: "Estado", value: "consultando..." }];
+    this.currentArrivalsRows = [
+      { label: "Estado", values: ["consultando..."] },
+    ];
     this.lastRouteMetrics = {
       distanceText: "-",
       durationApiText: "-",
@@ -558,7 +560,9 @@ export class LeafletMapManager {
       id: String((stop && stop.id) || ""),
       name: String((stop && stop.name) || "Parada"),
     };
-    this.currentArrivalsRows = [{ label: "Estado", value: "consultando..." }];
+    this.currentArrivalsRows = [
+      { label: "Estado", values: ["consultando..."] },
+    ];
     this.updateRoutePanels(this.lastRouteMetrics);
     this.updateArrivalsPanel();
     this.loadStopArrivalsForCurrentTarget();
@@ -572,7 +576,9 @@ export class LeafletMapManager {
       : "";
 
     if (!stopId || !this.fetchStopArrivals) {
-      this.currentArrivalsRows = [{ label: "Estado", value: "No disponibles" }];
+      this.currentArrivalsRows = [
+        { label: "Estado", values: ["No disponibles"] },
+      ];
       this.updateArrivalsPanel();
       return;
     }
@@ -587,7 +593,9 @@ export class LeafletMapManager {
     } catch (error) {
       if (requestToken !== this.arrivalsRequestToken) return;
       console.warn("No se pudieron cargar llegadas en panel del mapa", error);
-      this.currentArrivalsRows = [{ label: "Estado", value: "No disponibles" }];
+      this.currentArrivalsRows = [
+        { label: "Estado", values: ["No disponibles"] },
+      ];
       this.updateArrivalsPanel();
     }
   }
@@ -595,7 +603,7 @@ export class LeafletMapManager {
   buildArrivalsRows(arrivals) {
     const safeArrivals = Array.isArray(arrivals) ? arrivals.slice(0, 8) : [];
     if (!safeArrivals.length) {
-      return [{ label: "Estado", value: "No disponibles" }];
+      return [{ label: "Estado", values: ["No disponibles"] }];
     }
 
     const grouped = new Map();
@@ -626,14 +634,16 @@ export class LeafletMapManager {
       .sort((a, b) => a[0].localeCompare(b[0], "es", { numeric: true }))
       .map(([lineId, values]) => ({
         label: `L${lineId}`,
-        value: values.join(", "),
+        values,
       }));
 
     if (notices.length) {
-      rows.push({ label: "Aviso", value: notices.join(" ") });
+      rows.push({ label: "Aviso", values: [notices.join(" ")] });
     }
 
-    return rows.length ? rows : [{ label: "Estado", value: "No disponibles" }];
+    return rows.length
+      ? rows
+      : [{ label: "Estado", values: ["No disponibles"] }];
   }
 
   getMapArrivalsPanelId(routePanelId) {
@@ -642,29 +652,67 @@ export class LeafletMapManager {
     return `${base}-arrivals`;
   }
 
-  buildArrivalsPanelText() {
-    const rows = Array.isArray(this.currentArrivalsRows)
-      ? this.currentArrivalsRows
-      : [];
-    if (!rows.length) return "Llegadas\nEstado: No disponibles";
-
-    const lines = ["Llegadas"];
-    rows.forEach((row) => {
-      const label = String(row && row.label ? row.label : "Linea").trim();
-      const value = String(row && row.value ? row.value : "-").trim();
-      lines.push(`${label}: ${value}`);
-    });
-
-    return lines.join("\n");
-  }
-
   updateArrivalsPanel() {
     if (!this.mapArrivalsPanelElementId) return;
 
     const panel = document.getElementById(this.mapArrivalsPanelElementId);
     if (!panel) return;
 
-    panel.textContent = this.buildArrivalsPanelText();
+    const rows = Array.isArray(this.currentArrivalsRows)
+      ? this.currentArrivalsRows
+      : [];
+
+    panel.replaceChildren();
+
+    const title = document.createElement("div");
+    title.className = "mb-1 text-sm font-bold text-emerald-100";
+    title.textContent = "Llegadas";
+    panel.appendChild(title);
+
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "text-sm text-emerald-100/90";
+      empty.textContent = "Estado: No disponibles";
+      panel.appendChild(empty);
+      return;
+    }
+
+    rows.forEach((row) => {
+      const rowWrap = document.createElement("div");
+      rowWrap.className = "mb-1.5";
+
+      const label = String(row && row.label ? row.label : "Linea").trim();
+      const values = Array.isArray(row && row.values)
+        ? row.values
+        : [String(row && row.value ? row.value : "-")];
+
+      const header = document.createElement("div");
+      header.className = "mb-0.5";
+
+      if (/^L\S+/i.test(label)) {
+        const badge = document.createElement("span");
+        badge.className =
+          "inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white";
+        badge.textContent = label;
+        header.appendChild(badge);
+      } else {
+        const text = document.createElement("span");
+        text.className = "text-xs font-bold text-emerald-100";
+        text.textContent = `${label}:`;
+        header.appendChild(text);
+      }
+
+      rowWrap.appendChild(header);
+
+      values.forEach((item) => {
+        const line = document.createElement("div");
+        line.className = "pl-1 text-xs leading-5 text-emerald-100/95";
+        line.textContent = String(item || "-").trim();
+        rowWrap.appendChild(line);
+      });
+
+      panel.appendChild(rowWrap);
+    });
   }
 
   async drawRouteToSelectedStop(map, options = {}) {
