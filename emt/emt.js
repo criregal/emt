@@ -31,7 +31,11 @@ class DomRefs {
     this.stopsTableBody = document.getElementById("stopsTableBody");
 
     this.searchLine = document.getElementById("searchLine");
+    this.clearSearchLineBtn = document.getElementById("clearSearchLineBtn");
     this.searchStopName = document.getElementById("searchStopName");
+    this.clearSearchStopNameBtn = document.getElementById(
+      "clearSearchStopNameBtn",
+    );
     this.stopLineFilterBtn = document.getElementById("stopLineFilterBtn");
     this.stopLineFilterLabel = document.getElementById("stopLineFilterLabel");
     this.stopLineFilterPanel = document.getElementById("stopLineFilterPanel");
@@ -421,13 +425,58 @@ class EMTApi {
             ? "-"
             : this.stringifyValue(lineValue);
 
+        const coordsFromGeometry = this.extractCoordinatesFromFeature(feature);
+        const lonFromProps = this.parseCoordinate(
+          this.pickFromNormalizedMap(normalizedMap, [
+            "xlong",
+            "longitud",
+            "long",
+            "lon",
+            "lng",
+          ]),
+        );
+        const latFromProps = this.parseCoordinate(
+          this.pickFromNormalizedMap(normalizedMap, ["ylat", "latitud", "lat"]),
+        );
+
+        const lon =
+          coordsFromGeometry && coordsFromGeometry.lon !== null
+            ? coordsFromGeometry.lon
+            : lonFromProps;
+        const lat =
+          coordsFromGeometry && coordsFromGeometry.lat !== null
+            ? coordsFromGeometry.lat
+            : latFromProps;
+
         return {
           id: String(stopId),
           name: String(stopName),
           line: normalizedLine,
+          lat,
+          lon,
         };
       })
       .filter((stop) => stop.name || stop.id);
+  }
+
+  extractCoordinatesFromFeature(feature) {
+    const geometry = feature && feature.geometry ? feature.geometry : null;
+    const coords =
+      geometry && Array.isArray(geometry.coordinates)
+        ? geometry.coordinates
+        : null;
+    if (!coords || coords.length < 2) {
+      return { lat: null, lon: null };
+    }
+
+    const lon = this.parseCoordinate(coords[0]);
+    const lat = this.parseCoordinate(coords[1]);
+    return { lat, lon };
+  }
+
+  parseCoordinate(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
   }
 
   buildNormalizedPropertyMap(properties) {
@@ -580,6 +629,8 @@ class BusView {
     selectedLineIds = [],
     page = 1,
     pageSize = 25,
+    expandedStopId = null,
+    onToggleStopMap = null,
   ) {
     const { stopsTableBody } = this.dom;
     if (!stopsTableBody) return;
@@ -624,18 +675,69 @@ class BusView {
         page: 1,
         from: 0,
         to: 0,
+        expandedMap: null,
       };
     }
 
+    let expandedMap = null;
+
     paginated.forEach((stop) => {
       const row = document.createElement("tr");
-      row.className = "hover:bg-white/10";
+      row.className =
+        "cursor-pointer hover:bg-white/10 focus-within:bg-white/10";
+      row.setAttribute("tabindex", "0");
       row.innerHTML = `
         <td class="px-4 py-3 font-semibold text-fuchsia-200">${this.escapeHtml(stop.id)}</td>
         <td class="px-4 py-3 text-slate-100">${this.escapeHtml(stop.name)}</td>
         <td class="px-4 py-3 text-slate-300">${this.escapeHtml(stop.line)}</td>
       `;
+
+      const triggerToggle = () => {
+        if (typeof onToggleStopMap === "function") {
+          onToggleStopMap(stop);
+        }
+      };
+
+      row.addEventListener("click", triggerToggle);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          triggerToggle();
+        }
+      });
+
       stopsTableBody.appendChild(row);
+
+      if (String(expandedStopId || "") === String(stop.id || "")) {
+        const detailsRow = document.createElement("tr");
+        detailsRow.className = "bg-slate-900/35";
+
+        const detailsCell = document.createElement("td");
+        detailsCell.colSpan = 3;
+        detailsCell.className = "px-4 pb-4 pt-1";
+
+        const lat = Number(stop.lat);
+        const lon = Number(stop.lon);
+        const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lon);
+
+        if (!hasCoordinates) {
+          detailsCell.innerHTML =
+            '<div class="rounded-xl border border-rose-300/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">No hay coordenadas disponibles para esta parada.</div>';
+        } else {
+          const mapContainerId = this.getStopMapContainerId(stop.id);
+          detailsCell.innerHTML = `
+            <div class="mb-2 text-xs text-slate-300/80">Lat: ${lat.toFixed(6)} · Lon: ${lon.toFixed(6)}</div>
+            <div id="${this.escapeHtml(mapContainerId)}" class="h-64 w-full overflow-hidden rounded-xl border border-white/15"></div>
+          `;
+          expandedMap = {
+            stop,
+            mapContainerId,
+          };
+        }
+
+        detailsRow.appendChild(detailsCell);
+        stopsTableBody.appendChild(detailsRow);
+      }
     });
 
     return {
@@ -644,7 +746,15 @@ class BusView {
       page: safePage,
       from: startIndex + 1,
       to: Math.min(startIndex + pageSize, totalItems),
+      expandedMap,
     };
+  }
+
+  getStopMapContainerId(stopId) {
+    const safe = String(stopId || "")
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, "-");
+    return `stop-map-${safe || "unknown"}`;
   }
 
   getStopLineValues(stop) {
@@ -763,6 +873,8 @@ class BusApp {
     this.stopsPage = 1;
     this.stopsPageSize = 25;
     this.selectedStopLineIds = new Set();
+    this.expandedStopId = null;
+    this.currentLeafletMap = null;
   }
 
   async init() {
@@ -835,6 +947,8 @@ class BusApp {
         this.allStops = [];
         this.stopLinesIndex = {};
         this.selectedStopLineIds.clear();
+        this.expandedStopId = null;
+        this.destroyLeafletMap();
         this.updateStopLineFilterLabel();
         this.renderCurrentScreen();
         this.status.show("Datos locales borrados", "ok");
@@ -843,14 +957,35 @@ class BusApp {
 
     if (this.dom.searchLine) {
       this.dom.searchLine.addEventListener("input", () => {
+        this.updateSearchClearButtons();
         if (this.activeScreen === "lines") this.renderLinesScreen();
+      });
+    }
+
+    if (this.dom.clearSearchLineBtn && this.dom.searchLine) {
+      this.dom.clearSearchLineBtn.addEventListener("click", () => {
+        this.dom.searchLine.value = "";
+        this.updateSearchClearButtons();
+        if (this.activeScreen === "lines") this.renderLinesScreen();
+        this.dom.searchLine.focus();
       });
     }
 
     if (this.dom.searchStopName) {
       this.dom.searchStopName.addEventListener("input", () => {
         this.stopsPage = 1;
+        this.updateSearchClearButtons();
         if (this.activeScreen === "stops") this.renderStopsScreen();
+      });
+    }
+
+    if (this.dom.clearSearchStopNameBtn && this.dom.searchStopName) {
+      this.dom.clearSearchStopNameBtn.addEventListener("click", () => {
+        this.dom.searchStopName.value = "";
+        this.stopsPage = 1;
+        this.updateSearchClearButtons();
+        if (this.activeScreen === "stops") this.renderStopsScreen();
+        this.dom.searchStopName.focus();
       });
     }
 
@@ -915,6 +1050,20 @@ class BusApp {
         localStorage.removeItem(this.config.storageStopLinesIndexKey);
         this.fetchLinesFromWFS();
       });
+    }
+
+    this.updateSearchClearButtons();
+  }
+
+  updateSearchClearButtons() {
+    if (this.dom.clearSearchLineBtn && this.dom.searchLine) {
+      const show = String(this.dom.searchLine.value || "").trim() !== "";
+      this.dom.clearSearchLineBtn.classList.toggle("hidden", !show);
+    }
+
+    if (this.dom.clearSearchStopNameBtn && this.dom.searchStopName) {
+      const show = String(this.dom.searchStopName.value || "").trim() !== "";
+      this.dom.clearSearchStopNameBtn.classList.toggle("hidden", !show);
     }
   }
 
@@ -1150,6 +1299,11 @@ class BusApp {
   }
 
   setScreen(screen) {
+    if (screen !== "stops") {
+      this.expandedStopId = null;
+      this.destroyLeafletMap();
+    }
+
     this.activeScreen = screen;
 
     if (this.dom.menuView) {
@@ -1201,8 +1355,79 @@ class BusApp {
       selectedLineIds,
       this.stopsPage,
       this.stopsPageSize,
+      this.expandedStopId,
+      (stop) => this.toggleStopMap(stop),
     );
     this.updateStopsPagination(pageMeta);
+    this.renderExpandedStopMap(pageMeta ? pageMeta.expandedMap : null);
+  }
+
+  toggleStopMap(stop) {
+    const stopId = stop && stop.id ? String(stop.id) : "";
+    if (!stopId) return;
+
+    if (String(this.expandedStopId || "") === stopId) {
+      this.expandedStopId = null;
+      this.destroyLeafletMap();
+      this.renderStopsScreen();
+      return;
+    }
+
+    this.expandedStopId = stopId;
+    this.renderStopsScreen();
+  }
+
+  renderExpandedStopMap(expandedMap) {
+    this.destroyLeafletMap();
+    if (!expandedMap || !expandedMap.stop || !expandedMap.mapContainerId)
+      return;
+
+    if (typeof window === "undefined" || typeof window.L === "undefined") {
+      this.status.show(
+        "Leaflet no esta disponible para mostrar el mapa",
+        "err",
+      );
+      return;
+    }
+
+    const lat = Number(expandedMap.stop.lat);
+    const lon = Number(expandedMap.stop.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+    const mapContainer = document.getElementById(expandedMap.mapContainerId);
+    if (!mapContainer) return;
+
+    const map = window.L.map(mapContainer, {
+      zoomControl: true,
+      attributionControl: true,
+    }).setView([lat, lon], 16);
+
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    window.L.marker([lat, lon])
+      .addTo(map)
+      .bindPopup(this.view.escapeHtml(expandedMap.stop.name || "Parada"))
+      .openPopup();
+
+    this.currentLeafletMap = map;
+    setTimeout(() => {
+      if (this.currentLeafletMap) {
+        this.currentLeafletMap.invalidateSize();
+      }
+    }, 0);
+  }
+
+  destroyLeafletMap() {
+    if (
+      this.currentLeafletMap &&
+      typeof this.currentLeafletMap.remove === "function"
+    ) {
+      this.currentLeafletMap.remove();
+    }
+    this.currentLeafletMap = null;
   }
 
   applyStopLinesIndex() {
