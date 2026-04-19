@@ -177,7 +177,7 @@ export class BusView {
               index % 2 === 0 ? "bg-slate-900/55" : "bg-slate-800/45";
             return `<li class="flex items-start gap-2 rounded-lg px-2.5 py-1.5 ${zebraClass}">
               <span class="mt-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-950/80 text-[11px] font-semibold text-cyan-200">${index + 1}</span>
-              <span class="text-sm text-slate-100/95">${this.renderLineStopTextTwoLines(stop)}</span>
+              <span class="w-full">${this.renderLineStopTextTwoLines(stop)}</span>
             </li>`;
           })
           .join("");
@@ -212,15 +212,28 @@ export class BusView {
     if (!rawText) return "";
 
     const textWithoutOrder = rawText.replace(/^\s*\d+\.\s*/, "").trim();
-    const parts = textWithoutOrder.split(/\s*-\s*/).filter(Boolean);
+    const idMatch = textWithoutOrder.match(/\(([^()]+)\)\s*$/);
+    const stopId = idMatch ? String(idMatch[1] || "").trim() : "";
+    const textWithoutId = idMatch
+      ? textWithoutOrder.slice(0, idMatch.index).trim()
+      : textWithoutOrder;
+    const parts = textWithoutId.split(/\s*-\s*/).filter(Boolean);
+
+    let textHtml = "";
 
     if (parts.length < 2) {
-      return this.escapeHtml(textWithoutOrder);
+      textHtml = this.escapeHtml(textWithoutId);
+    } else {
+      const firstLine = this.escapeHtml(parts[0]);
+      const secondLine = this.escapeHtml(parts.slice(1).join(" - "));
+      textHtml = `<span class="block">${firstLine}</span><span class="block text-slate-300">${secondLine}</span>`;
     }
 
-    const firstLine = this.escapeHtml(parts[0]);
-    const secondLine = this.escapeHtml(parts.slice(1).join(" - "));
-    return `<span class="block">${firstLine}</span><span class="block text-slate-300">${secondLine}</span>`;
+    const idHtml = stopId
+      ? `<span class="shrink-0 text-xs text-slate-300/95">(${this.escapeHtml(stopId)})</span>`
+      : "";
+
+    return `<span class="flex w-full items-start justify-between gap-3"><span class="min-w-0">${textHtml}</span>${idHtml}</span>`;
   }
 
   renderStopsTable(
