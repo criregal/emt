@@ -21,6 +21,8 @@ export class LeafletMapManager {
     this.userMarker = null;
     this.realtimeLocationEnabled = false;
     this.realtimeLocationIntervalId = null;
+    this.aerialOverlayEnabled = false;
+    this.aerialOverlayLayer = null;
   }
 
   render(expandedMap) {
@@ -83,6 +85,10 @@ export class LeafletMapManager {
 
     this.currentMap = map;
     this.mapContainerElement = mapContainer;
+    this.aerialOverlayLayer = this.createAerialOverlayLayer();
+    if (this.aerialOverlayEnabled && this.aerialOverlayLayer) {
+      this.aerialOverlayLayer.addTo(map);
+    }
 
     this.addLineStopsMarkers(map, expandedMap);
     this.addTopMenuControl(map);
@@ -227,6 +233,10 @@ export class LeafletMapManager {
           <button type="button" data-map-action="center-user" class="rounded-md border border-white/20 bg-cyan-500/20 px-2 py-1 font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
           <button type="button" data-map-action="route-user-stop" class="rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a pie</button>
           <button type="button" data-map-action="fullscreen" class="rounded-md border border-emerald-300/30 bg-emerald-500/20 px-2 py-1 font-semibold text-emerald-100 hover:bg-emerald-500/30">Pantalla completa</button>
+          <label class="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
+            <input type="checkbox" data-map-action="aerial-overlay" class="h-3.5 w-3.5 accent-emerald-400" />
+            Foto aerea
+          </label>
             <label class="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
               <input type="checkbox" data-map-action="realtime-location" class="h-3.5 w-3.5 accent-cyan-400" />
               Tiempo real
@@ -273,6 +283,16 @@ export class LeafletMapManager {
         realtimeSwitch.checked = !!this.realtimeLocationEnabled;
         realtimeSwitch.addEventListener("change", () => {
           this.toggleRealtimeLocation(map, !!realtimeSwitch.checked);
+        });
+      }
+
+      const aerialSwitch = container.querySelector(
+        'input[data-map-action="aerial-overlay"]',
+      );
+      if (aerialSwitch) {
+        aerialSwitch.checked = !!this.aerialOverlayEnabled;
+        aerialSwitch.addEventListener("change", () => {
+          this.toggleAerialOverlay(map, !!aerialSwitch.checked);
         });
       }
 
@@ -440,6 +460,34 @@ export class LeafletMapManager {
     if (this.realtimeLocationIntervalId !== null) {
       clearInterval(this.realtimeLocationIntervalId);
       this.realtimeLocationIntervalId = null;
+    }
+  }
+
+  createAerialOverlayLayer() {
+    return window.L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 19,
+        opacity: 0.72,
+        attribution:
+          "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics",
+      },
+    );
+  }
+
+  toggleAerialOverlay(map, enabled) {
+    this.aerialOverlayEnabled = !!enabled;
+    if (!map || !this.aerialOverlayLayer) return;
+
+    if (this.aerialOverlayEnabled) {
+      if (!map.hasLayer(this.aerialOverlayLayer)) {
+        this.aerialOverlayLayer.addTo(map);
+      }
+      return;
+    }
+
+    if (map.hasLayer(this.aerialOverlayLayer)) {
+      map.removeLayer(this.aerialOverlayLayer);
     }
   }
 
@@ -931,6 +979,14 @@ export class LeafletMapManager {
       this.routeRequestController = null;
     }
     this.clearRouteLayer();
+    if (this.aerialOverlayLayer) {
+      try {
+        this.aerialOverlayLayer.remove();
+      } catch (error) {
+        // Ignore cleanup errors for aerial layer.
+      }
+    }
+    this.aerialOverlayLayer = null;
     if (this.mapResizeObserver) {
       this.mapResizeObserver.disconnect();
       this.mapResizeObserver = null;
