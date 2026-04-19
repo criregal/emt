@@ -13,6 +13,8 @@ export class LeafletMapManager {
     this.lastExpandedMapData = null;
     this.mapResizeObserver = null;
     this.mapContainerElement = null;
+    this.routeLayer = null;
+    this.routeRequestController = null;
   }
 
   render(expandedMap) {
@@ -172,6 +174,7 @@ export class LeafletMapManager {
           <button type="button" data-map-action="center-stop" class="rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100 hover:bg-white/20">Centrar parada</button>
           <button type="button" data-map-action="fit-line" class="rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100 hover:bg-white/20">Ver todas</button>
           <button type="button" data-map-action="center-user" class="rounded-md border border-white/20 bg-cyan-500/20 px-2 py-1 font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
+          <button type="button" data-map-action="route-user-stop" class="rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a parada</button>
           <button type="button" data-map-action="fullscreen" class="rounded-md border border-emerald-300/30 bg-emerald-500/20 px-2 py-1 font-semibold text-emerald-100 hover:bg-emerald-500/30">Pantalla completa</button>
         </div>
       `;
@@ -193,6 +196,13 @@ export class LeafletMapManager {
           }
           if (action === "center-user") {
             this.centerOnUserLocation(map);
+            return;
+          }
+          if (action === "route-user-stop") {
+            this.drawRouteToSelectedStop(map, {
+              fitBounds: true,
+              showStatusOnError: true,
+            });
             return;
           }
           if (action === "fullscreen") {
@@ -245,6 +255,7 @@ export class LeafletMapManager {
       fitToInclude = true,
       focusOnUser = false,
       showStatusOnError = false,
+      drawRouteToStop = false,
     } = options;
 
     if (
@@ -291,6 +302,13 @@ export class LeafletMapManager {
           }
         }
 
+        if (drawRouteToStop) {
+          this.drawRouteToSelectedStop(map, {
+            fitBounds: true,
+            showStatusOnError,
+          });
+        }
+
         return userMarker;
       },
       (error) => {
@@ -324,6 +342,166 @@ export class LeafletMapManager {
     popup.document.open();
     popup.document.write(documentHtml);
     popup.document.close();
+  }
+
+  async drawRouteToSelectedStop(map, options = {}) {
+    const { fitBounds = true, showStatusOnError = false } = options;
+
+    if (!this.selectedStopPoint) {
+      if (showStatusOnError) {
+        this.status.show("No hay parada seleccionada para trazar ruta", "err");
+      }
+      return;
+    }
+
+    if (!this.userPoint) {
+      this.addUserLocationMarker(map, {
+        fitToInclude: false,
+        focusOnUser: false,
+        showStatusOnError,
+        drawRouteToStop: true,
+      });
+      return;
+    }
+
+    try {
+      this.status.show("Calculando ruta por calles...", "info");
+      const route = await this.fetchRouteGeometry(
+        this.userPoint,
+        this.selectedStopPoint,
+      );
+      if (
+        !route ||
+        !Array.isArray(route.coordinates) ||
+        !route.coordinates.length
+      ) {
+        throw new Error("Ruta vacia");
+      }
+
+      const latLngs = route.coordinates
+        .map((coord) => {
+          if (!Array.isArray(coord) || coord.length < 2) return null;
+          const lon = Number(coord[0]);
+          const lat = Number(coord[1]);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+          return [lat, lon];
+        })
+        .filter(Boolean);
+
+      if (!latLngs.length) {
+        throw new Error("Coordenadas de ruta invalidas");
+      }
+
+      this.clearRouteLayer(map);
+      this.routeLayer = window.L.polyline(latLngs, {
+        color: "#f59e0b",
+        weight: 5,
+        opacity: 0.95,
+      })
+        .addTo(map)
+        .bindPopup(this.buildRouteSummary(route));
+
+      if (fitBounds) {
+        const routeBounds = this.routeLayer.getBounds();
+        if (routeBounds && routeBounds.isValid()) {
+          map.fitBounds(routeBounds.pad(0.15));
+        }
+      }
+
+      this.status.show("Ruta calculada", "ok");
+    } catch (error) {
+      console.warn("No se pudo calcular la ruta", error);
+      if (showStatusOnError) {
+        this.status.show("No se pudo calcular la ruta por calles", "err");
+      }
+    }
+  }
+
+  async fetchRouteGeometry(fromPoint, toPoint) {
+    if (this.routeRequestController) {
+      this.routeRequestController.abort();
+      this.routeRequestController = null;
+    }
+
+    const controller = new AbortController();
+    this.routeRequestController = controller;
+
+    const fromLon = Number(fromPoint.lng);
+    const fromLat = Number(fromPoint.lat);
+    const toLon = Number(toPoint.lng);
+    const toLat = Number(toPoint.lat);
+
+    const endpoint =
+      "https://router.project-osrm.org/route/v1/foot/" +
+      encodeURIComponent(`${fromLon},${fromLat}`) +
+      ";" +
+      encodeURIComponent(`${toLon},${toLat}`) +
+      "?overview=full&geometries=geojson&alternatives=false&steps=false";
+
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(endpoint, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const route =
+        payload && Array.isArray(payload.routes) && payload.routes.length
+          ? payload.routes[0]
+          : null;
+      if (
+        !route ||
+        !route.geometry ||
+        !Array.isArray(route.geometry.coordinates)
+      ) {
+        throw new Error("Sin geometria de ruta");
+      }
+
+      return {
+        coordinates: route.geometry.coordinates,
+        distanceMeters: Number(route.distance),
+        durationSeconds: Number(route.duration),
+      };
+    } finally {
+      clearTimeout(timeoutId);
+      if (this.routeRequestController === controller) {
+        this.routeRequestController = null;
+      }
+    }
+  }
+
+  buildRouteSummary(route) {
+    const distanceMeters = Number(route && route.distanceMeters);
+    const durationSeconds = Number(route && route.durationSeconds);
+
+    const distanceText = Number.isFinite(distanceMeters)
+      ? distanceMeters >= 1000
+        ? `${(distanceMeters / 1000).toFixed(2)} km`
+        : `${Math.round(distanceMeters)} m`
+      : "-";
+    const durationText = Number.isFinite(durationSeconds)
+      ? `${Math.max(1, Math.round(durationSeconds / 60))} min`
+      : "-";
+
+    return `Ruta a pie · ${distanceText} · ${durationText}`;
+  }
+
+  clearRouteLayer(map) {
+    if (!this.routeLayer) return;
+    const targetMap = map || this.currentMap;
+    if (
+      targetMap &&
+      targetMap.hasLayer &&
+      targetMap.hasLayer(this.routeLayer)
+    ) {
+      targetMap.removeLayer(this.routeLayer);
+    }
+    this.routeLayer = null;
   }
 
   createFullscreenMapData() {
@@ -482,6 +660,11 @@ export class LeafletMapManager {
     this.selectedStopPoint = null;
     this.lineBounds = null;
     this.lastExpandedMapData = null;
+    if (this.routeRequestController) {
+      this.routeRequestController.abort();
+      this.routeRequestController = null;
+    }
+    this.clearRouteLayer();
     if (this.mapResizeObserver) {
       this.mapResizeObserver.disconnect();
       this.mapResizeObserver = null;
