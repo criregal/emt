@@ -78,6 +78,9 @@ export class LeafletMapManager {
       );
     });
 
+    this.currentMap = map;
+    this.mapContainerElement = mapContainer;
+
     this.addLineStopsMarkers(map, expandedMap);
     this.addTopMenuControl(map);
 
@@ -88,8 +91,6 @@ export class LeafletMapManager {
       drawRouteToStop: true,
     });
 
-    this.currentMap = map;
-    this.mapContainerElement = mapContainer;
     this.ensureMapRoutePanel(mapContainer, this.mapRoutePanelElementId);
     this.updateRoutePanels({
       distanceText: "-",
@@ -351,7 +352,7 @@ export class LeafletMapManager {
 
         if (drawRouteToStop) {
           this.drawRouteToSelectedStop(map, {
-            fitBounds: false,
+            fitBounds: true,
             showStatusOnError,
           });
         }
@@ -471,7 +472,17 @@ export class LeafletMapManager {
       if (fitBounds) {
         const routeBounds = this.routeLayer.getBounds();
         if (routeBounds && routeBounds.isValid()) {
-          map.fitBounds(routeBounds.pad(0.15));
+          const userLatLng = this.userPoint;
+          const targetLatLng = this.selectedStopPoint;
+          if (userLatLng && targetLatLng) {
+            routeBounds.extend(userLatLng);
+            routeBounds.extend(targetLatLng);
+          }
+
+          map.fitBounds(routeBounds.pad(0.04), {
+            maxZoom: 18,
+            animate: false,
+          });
         }
       }
 
