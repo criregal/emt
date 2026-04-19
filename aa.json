@@ -1,0 +1,82 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "Lineas.fid--239b25bd_198c313d41e_4bea",
+      "geometry": null,
+      "properties": {
+        "ID_PUBLICO": "4",
+        "NOMBRE_LINEA": "PORT/NATZARET - PL. DE L'AJUNTAMENT",
+        "TOPOLOGIA": "general",
+        "ID_SUBLINEA": 4,
+        "NOMBRE_SUBLINEA": "PORT/NATZARET - PL. DE L'AJUNTAMENT",
+        "FECHA_INI": "1900-01-01T00:14:44Z",
+        "FECHA_FIN": null,
+        "ICONO": "https://www.emtvalencia.es/wp/wp-content/uploads/2025/02/Linea_4.png",
+        "ID_RUTA": 1017,
+        "PINI_I": 2403,
+        "PFIN_I": 1585,
+        "PINTER_I": 0,
+        "NOMBRE_IDA": "DE PL. DE L'AJUNTAMENT A NATZARET",
+        "PINI_V": 1585,
+        "PFIN_V": 2403,
+        "PINTER_V": 0,
+        "NOMBRE_VUELTA": "DE NATZARET A PL. DE L'AJUNTAMENT"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "Lineas.fid--239b25bd_198c313d41e_4beb",
+      "geometry": null,
+      "properties": {
+        "ID_PUBLICO": "6",
+        "NOMBRE_LINEA": "TORREFIEL - HOSPITAL LA FE",
+        "TOPOLOGIA": "general",
+        "ID_SUBLINEA": 6,
+        "NOMBRE_SUBLINEA": "TORREFIEL - HOSPITAL LA FE",
+        "FECHA_INI": "1900-01-01T00:14:44Z",
+        "FECHA_FIN": null,
+        "ICONO": "https://www.emtvalencia.es/wp/wp-content/uploads/2025/02/Linea_6.png",
+        "ID_RUTA": 1057,
+        "PINI_I": 2085,
+        "PFIN_I": 2158,
+        "PINTER_I": 0,
+        "NOMBRE_IDA": "DE TORREFIEL A HOSPITAL LA FE",
+        "PINI_V": 2158,
+        "PFIN_V": 2085,
+        "PINTER_V": 0,
+        "NOMBRE_VUELTA": "DE HOSPITAL LA FE A TORREFIEL"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "Lineas.fid--239b25bd_198c313d41e_4bec",
+      "geometry": null,
+      "properties": {
+        "ID_PUBLICO": "7",
+        "NOMBRE_LINEA": "MERCAT CENTRAL - FTA. SANT  LLUÍS",
+        "TOPOLOGIA": "general",
+        "ID_SUBLINEA": 7,
+        "NOMBRE_SUBLINEA": "MERCAT CENTRAL - FTA. SANT  LLUÍS",
+        "FECHA_INI": "1900-01-01T00:14:44Z",
+        "FECHA_FIN": null,
+        "ICONO": "https://www.emtvalencia.es/wp/wp-content/uploads/2025/02/Linea_7.png",
+        "ID_RUTA": 1061,
+        "PINI_I": 2288,
+        "PFIN_I": 1940,
+        "PINTER_I": 0,
+        "NOMBRE_IDA": "DE  A FONTETA SANT LLUÍS",
+        "PINI_V": 1940,
+        "PFIN_V": 2288,
+        "PINTER_V": 0,
+        "NOMBRE_VUELTA": "DE FONTETA SANT LLUÍS A "
+      }
+    }
+  ],
+  "totalFeatures": 46,
+  "numberMatched": 46,
+  "numberReturned": 46,
+  "timeStamp": "2025-08-19T16:44:27.683Z",
+  "crs": null
+}

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Gestor de Líneas de Autobús (EMT Valencia)</title>
+    <link rel="stylesheet" href="emt.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <p class="eyebrow">Explorador urbano</p>
+        <h1>Gestor de líneas y paradas · EMT Valencia</h1>
+      </header>
+      <main class="app">
+        <aside class="panel panel-lines">
+          <div class="panel-head">
+            <h2>Líneas disponibles</h2>
+            <p class="muted">Obtenidas desde WFS</p>
+          </div>
+
+          <div id="statusContainer" class="status info">Iniciando...</div>
+
+          <div class="lines-list" id="linesList" role="list"></div>
+
+          <!-- Controles para añadir/eliminar líneas ocultos por diseño (no permitidos) -->
+          <div class="controls">
+            <input
+              id="newLineName"
+              placeholder="Nombre de la línea"
+              style="display: none"
+            />
+            <button id="addLineBtn" style="display: none">Añadir</button>
+          </div>
+
+          <div class="actions-row">
+            <button id="reloadBtn">Recargar desde servidor</button>
+          </div>
+
+          <p class="muted helper-text">
+            La app intenta cargar siempre desde el WFS indicado. Si falla,
+            intenta usar localStorage como fallback.
+          </p>
+        </aside>
+
+        <section class="panel main">
+          <div class="main-head">
+            <div>
+              <h2 id="currentLineName">Selecciona una línea</h2>
+              <p id="currentLineInfo" class="muted">Paradas de la línea</p>
+            </div>
+            <div class="search-wrap">
+              <input id="searchStop" placeholder="Buscar parada..." />
+            </div>
+          </div>
+
+          <div id="stopsContainer" class="stops" aria-live="polite"></div>
+
+          <footer class="panel-footer">
+            <button id="saveBtn">Guardar</button>
+            <button id="clearBtn">Borrar datos locales</button>
+            <span class="muted"
+              >(Paradas locales; las líneas proceden del servidor WFS)</span
+            >
+          </footer>
+        </section>
+      </main>
+    </div>
+    <script src="emt.js"></script>
+  </body>
+</html>
