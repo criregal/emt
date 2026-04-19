@@ -86,6 +86,42 @@ export class BusApp {
       );
     }
 
+    if (this.dom.linesBackIosBtn) {
+      this.dom.linesBackIosBtn.addEventListener("click", () =>
+        this.setScreen("menu"),
+      );
+    }
+
+    if (this.dom.linesMenuToMenuBtn) {
+      this.dom.linesMenuToMenuBtn.addEventListener("click", () =>
+        this.setScreen("menu"),
+      );
+    }
+
+    if (this.dom.linesMenuToStopsBtn) {
+      this.dom.linesMenuToStopsBtn.addEventListener("click", () =>
+        this.setScreen("stops"),
+      );
+    }
+
+    if (this.dom.stopsBackIosBtn) {
+      this.dom.stopsBackIosBtn.addEventListener("click", () =>
+        this.setScreen("menu"),
+      );
+    }
+
+    if (this.dom.stopsMenuToMenuBtn) {
+      this.dom.stopsMenuToMenuBtn.addEventListener("click", () =>
+        this.setScreen("menu"),
+      );
+    }
+
+    if (this.dom.stopsMenuToLinesBtn) {
+      this.dom.stopsMenuToLinesBtn.addEventListener("click", () =>
+        this.setScreen("lines"),
+      );
+    }
+
     if (this.dom.saveBtn) {
       this.dom.saveBtn.addEventListener("click", () => {
         this.storage.saveLines(this.lines);

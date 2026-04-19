@@ -7,6 +7,12 @@ export class DomRefs {
     this.goStopsBtn = document.getElementById("goStopsBtn");
     this.backFromLinesBtn = document.getElementById("backFromLinesBtn");
     this.backFromStopsBtn = document.getElementById("backFromStopsBtn");
+    this.linesBackIosBtn = document.getElementById("linesBackIosBtn");
+    this.linesMenuToMenuBtn = document.getElementById("linesMenuToMenuBtn");
+    this.linesMenuToStopsBtn = document.getElementById("linesMenuToStopsBtn");
+    this.stopsBackIosBtn = document.getElementById("stopsBackIosBtn");
+    this.stopsMenuToMenuBtn = document.getElementById("stopsMenuToMenuBtn");
+    this.stopsMenuToLinesBtn = document.getElementById("stopsMenuToLinesBtn");
 
     this.linesTableBody = document.getElementById("linesTableBody");
     this.stopsTableBody = document.getElementById("stopsTableBody");
