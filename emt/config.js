@@ -5,6 +5,8 @@ export const APP_CONFIG = {
     "https://geoportal.emtvalencia.es/geoserver/wfs?service=wfs&version=1.1.0&request=GetFeature&outPutFormat=json&srsName=EPSG:4326&typeName=emt:Paradas",
   paradasUrlBase:
     "https://geoportal.emtvalencia.es/ciudadano/servicios/paradas_linea.php",
+  arrivalsUrlBase:
+    "https://geoportal.emtvalencia.es/EMT/mapfunctions/MapUtilsPetitions.php",
   paradasUsuario: "7gH8m45w7A",
   corsProxy: "https://api.allorigins.win/raw?url=",
   storageKey: "emt_lineas_v1",
@@ -14,6 +16,7 @@ export const APP_CONFIG = {
   storageStopDirectionsIndexKey: "emt_paradas_sentidos_index_v3",
   firstRunFlagKey: "emt_first_run_done_v1",
   requestTimeoutMs: 10000,
+  arrivalsRequestTimeoutMs: 9000,
   proxyTimeoutMs: 12000,
   stopLinesIndexConcurrency: 10,
 };

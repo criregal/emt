@@ -160,6 +160,20 @@ export class EMTApi {
     return response.json();
   }
 
+  async fetchStopArrivalsDirect(stopId) {
+    const url = this.getArrivalsUrl(stopId);
+    return this.fetchArrivalsFromUrl(
+      url,
+      this.config.arrivalsRequestTimeoutMs || this.config.requestTimeoutMs,
+    );
+  }
+
+  async fetchStopArrivalsViaProxy(stopId) {
+    const originalUrl = this.getArrivalsUrl(stopId);
+    const proxyUrl = this.config.corsProxy + encodeURIComponent(originalUrl);
+    return this.fetchArrivalsFromUrl(proxyUrl, this.config.proxyTimeoutMs);
+  }
+
   getStopsUrl(lineId, sentido = null) {
     const params =
       "?usuario=" +
@@ -169,6 +183,270 @@ export class EMTApi {
       (sentido ? "&sentido=" + encodeURIComponent(sentido) : "") +
       "&lang=es";
     return this.config.paradasUrlBase + params;
+  }
+
+  getArrivalsUrl(stopId) {
+    const cleanStopId = String(stopId || "").trim();
+    const params =
+      "?sec=getSAE&parada=" +
+      encodeURIComponent(cleanStopId) +
+      "&adaptados=false&idioma=es";
+    return this.config.arrivalsUrlBase + params;
+  }
+
+  async fetchArrivalsFromUrl(url, timeoutMs) {
+    const response = await HttpClient.fetchWithTimeout(
+      url,
+      { cache: "no-store" },
+      timeoutMs,
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const contentType = String(response.headers.get("content-type") || "");
+    const rawText = await response.text();
+    return this.parseArrivalsPayload(rawText, contentType);
+  }
+
+  parseArrivalsPayload(payloadText, contentType = "") {
+    const text = String(payloadText || "").trim();
+    if (!text) return [];
+
+    const looksJson =
+      contentType.toLowerCase().includes("json") ||
+      text.startsWith("{") ||
+      text.startsWith("[");
+
+    if (looksJson) {
+      try {
+        const parsed = JSON.parse(text);
+        return this.extractArrivalsFromJson(parsed);
+      } catch (error) {
+        // Si el proveedor devuelve JSON mal formado, se intenta parseo XML.
+      }
+    }
+
+    return this.extractArrivalsFromXml(text);
+  }
+
+  extractArrivalsFromJson(payload) {
+    const candidates = [];
+
+    if (Array.isArray(payload)) {
+      candidates.push(...payload);
+    } else if (payload && typeof payload === "object") {
+      const arrayKeys = [
+        "arrivals",
+        "llegadas",
+        "items",
+        "data",
+        "result",
+        "results",
+        "tiempos",
+        "buses",
+      ];
+
+      arrayKeys.forEach((key) => {
+        const value = payload[key];
+        if (Array.isArray(value)) {
+          candidates.push(...value);
+        }
+      });
+    }
+
+    return candidates
+      .map((item) => this.normalizeArrivalItem(item))
+      .filter(Boolean)
+      .sort((a, b) => this.compareArrivalItems(a, b));
+  }
+
+  extractArrivalsFromXml(xmlText) {
+    try {
+      const xml = new DOMParser().parseFromString(
+        String(xmlText || "").trim(),
+        "application/xml",
+      );
+      if (xml.getElementsByTagName("parsererror").length > 0) {
+        return [];
+      }
+
+      const nodes = [];
+      const nodeNames = ["llegada", "arribo", "bus", "linea"];
+      nodeNames.forEach((name) => {
+        const list = xml.getElementsByTagName(name);
+        for (let index = 0; index < list.length; index++) {
+          nodes.push(list[index]);
+        }
+      });
+
+      const results = nodes
+        .map((node) => {
+          const lineId =
+            this.readXmlText(node, "linea") ||
+            this.readXmlText(node, "id_linea") ||
+            this.readXmlText(node, "line") ||
+            "";
+
+          const destination =
+            this.readXmlText(node, "destino") ||
+            this.readXmlText(node, "destination") ||
+            this.readXmlText(node, "sentido") ||
+            "";
+
+          const minutesRaw =
+            this.readXmlText(node, "minutos") ||
+            this.readXmlText(node, "minutes") ||
+            this.readXmlText(node, "tiempo") ||
+            this.readXmlText(node, "espera") ||
+            "";
+
+          const timeLabel =
+            this.readXmlText(node, "hora") ||
+            this.readXmlText(node, "horaLlegada") ||
+            this.readXmlText(node, "time") ||
+            this.readXmlText(node, "error") ||
+            "";
+
+          return this.normalizeArrivalItem({
+            linea: lineId,
+            destino: destination,
+            minutos: minutesRaw,
+            hora: timeLabel,
+          });
+        })
+        .filter(Boolean)
+        .sort((a, b) => this.compareArrivalItems(a, b));
+
+      return results;
+    } catch (error) {
+      console.warn("No se pudo parsear XML de llegadas", error);
+      return [];
+    }
+  }
+
+  normalizeArrivalItem(rawItem) {
+    if (!rawItem || typeof rawItem !== "object") return null;
+
+    const lineId = this.pickFirstNonEmpty(rawItem, [
+      "linea",
+      "line",
+      "line_id",
+      "lineId",
+      "id_linea",
+      "route",
+    ]);
+
+    const destination = this.pickFirstNonEmpty(rawItem, [
+      "destino",
+      "destination",
+      "sentido",
+      "direction",
+      "descripcion",
+      "description",
+    ]);
+
+    const minutesValue = this.pickFirstNonEmpty(rawItem, [
+      "minutos",
+      "minutes",
+      "tiempo",
+      "wait",
+      "eta",
+      "espera",
+    ]);
+
+    const timeLabel = this.pickFirstNonEmpty(rawItem, [
+      "hora",
+      "horaLlegada",
+      "time",
+      "arrival",
+      "proxima",
+      "error",
+    ]);
+
+    const minutes = this.parseMinutesValue(minutesValue);
+    const safeLine = String(lineId || "").trim();
+    const safeDestination = String(destination || "").trim();
+    const safeTimeLabel = this.cleanArrivalLabel(timeLabel);
+
+    if (!safeLine && !Number.isFinite(minutes) && !safeTimeLabel) {
+      return null;
+    }
+
+    return {
+      lineId: safeLine,
+      destination: safeDestination,
+      minutes: Number.isFinite(minutes) ? minutes : null,
+      timeLabel: safeTimeLabel,
+    };
+  }
+
+  pickFirstNonEmpty(source, keys) {
+    for (let index = 0; index < keys.length; index++) {
+      const key = keys[index];
+      const value = source[key];
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+      ) {
+        return value;
+      }
+    }
+    return "";
+  }
+
+  parseMinutesValue(value) {
+    if (value === undefined || value === null) return null;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return Math.max(0, Math.round(numeric));
+
+    const text = String(value).toLowerCase();
+    const match = text.match(/(\d{1,3})/);
+    if (match) {
+      return Math.max(0, Number(match[1]));
+    }
+
+    return null;
+  }
+
+  cleanArrivalLabel(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+
+    const withoutTags = text
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]*>/g, " ");
+
+    const normalized = withoutTags
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return normalized;
+  }
+
+  compareArrivalItems(a, b) {
+    const aHasMinutes = Number.isFinite(a && a.minutes);
+    const bHasMinutes = Number.isFinite(b && b.minutes);
+
+    if (aHasMinutes && bHasMinutes) {
+      return a.minutes - b.minutes;
+    }
+    if (aHasMinutes) return -1;
+    if (bHasMinutes) return 1;
+
+    return String(a && a.lineId ? a.lineId : "").localeCompare(
+      String(b && b.lineId ? b.lineId : ""),
+      "es",
+      { numeric: true },
+    );
   }
 
   parseStopsXml(xmlText) {

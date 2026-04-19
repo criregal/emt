@@ -26,6 +26,7 @@ export class BusApp {
     this.stopsPageSize = 25;
     this.selectedStopLineIds = new Set();
     this.expandedStopId = null;
+    this.stopArrivalsRequestToken = 0;
   }
 
   async init() {
@@ -557,6 +558,166 @@ export class BusApp {
   renderExpandedStopMap(expandedMap) {
     const payload = this.buildExpandedMapPayload(expandedMap);
     this.mapManager.render(payload);
+    this.renderExpandedStopArrivals(payload);
+  }
+
+  async renderExpandedStopArrivals(expandedMap) {
+    if (!expandedMap || !expandedMap.stop || !expandedMap.stopArrivalsId)
+      return;
+
+    const stopId = String(expandedMap.stop.id || "").trim();
+    if (!stopId) return;
+
+    const panel = document.getElementById(expandedMap.stopArrivalsId);
+    if (!panel) return;
+
+    const currentRequestToken = ++this.stopArrivalsRequestToken;
+    panel.textContent = "Proximos buses: consultando...";
+    this.applyStopArrivalsPanelState(panel, "loading");
+
+    let arrivals = [];
+    try {
+      arrivals = await this.fetchStopArrivalsData(stopId);
+    } catch (error) {
+      console.warn("No se pudieron obtener llegadas de la parada", error);
+    }
+
+    if (currentRequestToken !== this.stopArrivalsRequestToken) return;
+    const arrivalsView = this.buildStopArrivalsView(arrivals);
+    panel.textContent = arrivalsView.text;
+    this.applyStopArrivalsPanelState(panel, arrivalsView.variant);
+  }
+
+  async fetchStopArrivalsData(stopId) {
+    try {
+      return await this.api.fetchStopArrivalsDirect(stopId);
+    } catch (directError) {
+      console.warn("Llegadas directo fallaron", directError);
+    }
+
+    try {
+      return await this.api.fetchStopArrivalsViaProxy(stopId);
+    } catch (proxyError) {
+      console.warn("Llegadas por proxy fallaron", proxyError);
+    }
+
+    return [];
+  }
+
+  buildStopArrivalsView(arrivals) {
+    const safeArrivals = Array.isArray(arrivals) ? arrivals.slice(0, 6) : [];
+    if (!safeArrivals.length) {
+      return {
+        text: "Proximos buses: no disponibles para esta parada en este momento.",
+        variant: "neutral",
+      };
+    }
+
+    const chunks = safeArrivals
+      .map((item) => this.formatArrivalItem(item))
+      .filter(Boolean);
+
+    if (!chunks.length) {
+      return {
+        text: "Proximos buses: no disponibles para esta parada en este momento.",
+        variant: "neutral",
+      };
+    }
+
+    const hasServiceNotice = safeArrivals.some((item) =>
+      this.isServiceNoticeArrival(item),
+    );
+
+    if (hasServiceNotice) {
+      return {
+        text: `Aviso SAE: ${chunks.join(" · ")}`,
+        variant: "warning",
+      };
+    }
+
+    return {
+      text: `Proximos buses: ${chunks.join(" · ")}`,
+      variant: "ok",
+    };
+  }
+
+  isServiceNoticeArrival(arrival) {
+    if (!arrival || typeof arrival !== "object") return false;
+
+    const lineId = String(arrival.lineId || "").trim();
+    const minutes = Number(arrival.minutes);
+    const label = String(arrival.timeLabel || "").trim();
+
+    return !lineId && !Number.isFinite(minutes) && !!label;
+  }
+
+  applyStopArrivalsPanelState(panel, variant) {
+    if (!panel || !panel.classList) return;
+
+    panel.classList.remove(
+      "border-white/15",
+      "bg-slate-900/35",
+      "text-slate-200",
+      "border-amber-300/45",
+      "bg-amber-500/15",
+      "text-amber-100",
+      "border-emerald-300/35",
+      "bg-emerald-500/15",
+      "text-emerald-100",
+      "border-cyan-300/35",
+      "bg-cyan-500/15",
+      "text-cyan-100",
+    );
+
+    if (variant === "warning") {
+      panel.classList.add(
+        "border-amber-300/45",
+        "bg-amber-500/15",
+        "text-amber-100",
+      );
+      return;
+    }
+
+    if (variant === "ok") {
+      panel.classList.add(
+        "border-emerald-300/35",
+        "bg-emerald-500/15",
+        "text-emerald-100",
+      );
+      return;
+    }
+
+    if (variant === "loading") {
+      panel.classList.add(
+        "border-cyan-300/35",
+        "bg-cyan-500/15",
+        "text-cyan-100",
+      );
+      return;
+    }
+
+    panel.classList.add("border-white/15", "bg-slate-900/35", "text-slate-200");
+  }
+
+  formatArrivalItem(arrival) {
+    if (!arrival || typeof arrival !== "object") return "";
+
+    const lineId = String(arrival.lineId || "").trim();
+    const destination = String(arrival.destination || "").trim();
+    const timeLabel = String(arrival.timeLabel || "").trim();
+    const minutes = Number(arrival.minutes);
+
+    const lineText = lineId ? `L${lineId}` : "Linea";
+    const destinationText = destination ? ` ${destination}` : "";
+    const waitText = Number.isFinite(minutes)
+      ? `${minutes} min`
+      : timeLabel || "sin tiempo";
+
+    if (!lineId && !destination) {
+      return waitText;
+    }
+
+    return `${lineText}${destinationText}: ${waitText}`;
   }
 
   buildExpandedMapPayload(expandedMap) {
