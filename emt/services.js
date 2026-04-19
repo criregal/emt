@@ -104,24 +104,24 @@ export class EMTApi {
     return response.json();
   }
 
-  async fetchStopsForLineDirect(lineId) {
-    const url = this.getStopsUrl(lineId);
+  async fetchStopsForLineDirect(lineId, sentido = null) {
+    const url = this.getStopsUrl(lineId, sentido);
     return this.fetchStopsFromUrl(url, this.config.requestTimeoutMs);
   }
 
-  async fetchStopsForLineEntriesDirect(lineId) {
-    const url = this.getStopsUrl(lineId);
+  async fetchStopsForLineEntriesDirect(lineId, sentido = null) {
+    const url = this.getStopsUrl(lineId, sentido);
     return this.fetchStopsEntriesFromUrl(url, this.config.requestTimeoutMs);
   }
 
-  async fetchStopsForLineViaProxy(lineId) {
-    const originalUrl = this.getStopsUrl(lineId);
+  async fetchStopsForLineViaProxy(lineId, sentido = null) {
+    const originalUrl = this.getStopsUrl(lineId, sentido);
     const proxyUrl = this.config.corsProxy + encodeURIComponent(originalUrl);
     return this.fetchStopsFromUrl(proxyUrl, this.config.proxyTimeoutMs);
   }
 
-  async fetchStopsForLineEntriesViaProxy(lineId) {
-    const originalUrl = this.getStopsUrl(lineId);
+  async fetchStopsForLineEntriesViaProxy(lineId, sentido = null) {
+    const originalUrl = this.getStopsUrl(lineId, sentido);
     const proxyUrl = this.config.corsProxy + encodeURIComponent(originalUrl);
     return this.fetchStopsEntriesFromUrl(proxyUrl, this.config.proxyTimeoutMs);
   }
@@ -160,12 +160,13 @@ export class EMTApi {
     return response.json();
   }
 
-  getStopsUrl(lineId) {
+  getStopsUrl(lineId, sentido = null) {
     const params =
       "?usuario=" +
       encodeURIComponent(this.config.paradasUsuario) +
       "&linea=" +
       encodeURIComponent(lineId) +
+      (sentido ? "&sentido=" + encodeURIComponent(sentido) : "") +
       "&lang=es";
     return this.config.paradasUrlBase + params;
   }
@@ -191,6 +192,10 @@ export class EMTApi {
           this.readXmlText(node, "name");
         const stopId =
           this.readXmlText(node, "id_parada") || this.readXmlText(node, "id");
+        const sentidoParada =
+          this.readXmlText(node, "sentido_parada") ||
+          this.readXmlText(node, "sentido") ||
+          "";
 
         if (nombre) {
           stops.push(`${orden}. ${nombre} (${stopId})`);
@@ -222,6 +227,10 @@ export class EMTApi {
         const node = paradaNodes[index];
         const stopId =
           this.readXmlText(node, "id_parada") || this.readXmlText(node, "id");
+        const sentidoParada =
+          this.readXmlText(node, "sentido_parada") ||
+          this.readXmlText(node, "sentido") ||
+          "";
 
         const lineNodes = node.getElementsByTagName("linea_parada");
         const lineIds = [];
@@ -234,6 +243,9 @@ export class EMTApi {
           entries.push({
             stopId: String(stopId).trim(),
             lineIds,
+            sentidoParada: String(sentidoParada || "")
+              .trim()
+              .toUpperCase(),
           });
         }
       }

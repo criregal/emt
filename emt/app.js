@@ -18,6 +18,7 @@ export class BusApp {
     this.lines = [];
     this.allStops = [];
     this.stopLinesIndex = {};
+    this.stopDirectionsIndex = {};
     this.buildingStopLinesIndex = false;
     this.activeScreen = "menu";
     this.fetchingStops = false;
@@ -53,6 +54,7 @@ export class BusApp {
     localStorage.removeItem(this.config.storageStopsKey);
     localStorage.removeItem(this.config.storageStopsNormalizedKey);
     localStorage.removeItem(this.config.storageStopLinesIndexKey);
+    localStorage.removeItem(this.config.storageStopDirectionsIndexKey);
     localStorage.setItem(this.config.firstRunFlagKey, "1");
   }
 
@@ -93,9 +95,12 @@ export class BusApp {
         this.storage.clearLines();
         localStorage.removeItem(this.config.storageStopsKey);
         localStorage.removeItem(this.config.storageStopsNormalizedKey);
+        localStorage.removeItem(this.config.storageStopLinesIndexKey);
+        localStorage.removeItem(this.config.storageStopDirectionsIndexKey);
         this.lines = [];
         this.allStops = [];
         this.stopLinesIndex = {};
+        this.stopDirectionsIndex = {};
         this.selectedStopLineIds.clear();
         this.expandedStopId = null;
         this.destroyLeafletMap();
@@ -197,7 +202,9 @@ export class BusApp {
     if (this.dom.reloadBtn) {
       this.dom.reloadBtn.addEventListener("click", () => {
         this.stopLinesIndex = {};
+        this.stopDirectionsIndex = {};
         localStorage.removeItem(this.config.storageStopLinesIndexKey);
+        localStorage.removeItem(this.config.storageStopDirectionsIndexKey);
         this.fetchLinesFromWFS();
       });
     }
@@ -379,7 +386,9 @@ export class BusApp {
 
     this.storage.saveLines(this.lines);
     this.stopLinesIndex = {};
+    this.stopDirectionsIndex = {};
     localStorage.removeItem(this.config.storageStopLinesIndexKey);
+    localStorage.removeItem(this.config.storageStopDirectionsIndexKey);
     this.renderCurrentScreen();
     this.status.show(
       `Cargadas ${this.lines.length} líneas desde ${sourceLabel} (se usan ID_PUBLICO y NOMBRE_LINEA).`,
@@ -395,8 +404,14 @@ export class BusApp {
       const cachedIndex = this.storage.loadStopsSnapshot(
         this.config.storageStopLinesIndexKey,
       );
+      const cachedDirections = this.storage.loadStopsSnapshot(
+        this.config.storageStopDirectionsIndexKey,
+      );
       this.stopLinesIndex = this.isNonEmptyObject(cachedIndex)
         ? cachedIndex
+        : {};
+      this.stopDirectionsIndex = this.isNonEmptyObject(cachedDirections)
+        ? cachedDirections
         : {};
       this.applyStopLinesIndex();
       this.storage.saveStopsSnapshot(this.config.storageStopsKey, geoJson);
@@ -415,8 +430,14 @@ export class BusApp {
         const cachedIndex = this.storage.loadStopsSnapshot(
           this.config.storageStopLinesIndexKey,
         );
+        const cachedDirections = this.storage.loadStopsSnapshot(
+          this.config.storageStopDirectionsIndexKey,
+        );
         this.stopLinesIndex = this.isNonEmptyObject(cachedIndex)
           ? cachedIndex
+          : {};
+        this.stopDirectionsIndex = this.isNonEmptyObject(cachedDirections)
+          ? cachedDirections
           : {};
         this.applyStopLinesIndex();
         this.status.show(
@@ -432,8 +453,14 @@ export class BusApp {
           const cachedIndex = this.storage.loadStopsSnapshot(
             this.config.storageStopLinesIndexKey,
           );
+          const cachedDirections = this.storage.loadStopsSnapshot(
+            this.config.storageStopDirectionsIndexKey,
+          );
           this.stopLinesIndex = this.isNonEmptyObject(cachedIndex)
             ? cachedIndex
+            : {};
+          this.stopDirectionsIndex = this.isNonEmptyObject(cachedDirections)
+            ? cachedDirections
             : {};
           this.applyStopLinesIndex();
           this.storage.saveStopsSnapshot(
@@ -555,6 +582,7 @@ export class BusApp {
       ...expandedMap,
       selectedLineIds,
       lineStops,
+      stopDirectionsIndex: this.stopDirectionsIndex,
     };
   }
 
@@ -585,15 +613,26 @@ export class BusApp {
     const hasAnyMappedLine = this.allStops.some(
       (stop) => String(stop.line || "").trim() !== "-",
     );
-    if (hasAnyMappedLine && Object.keys(this.stopLinesIndex || {}).length > 0) {
+    if (
+      hasAnyMappedLine &&
+      Object.keys(this.stopLinesIndex || {}).length > 0 &&
+      Object.keys(this.stopDirectionsIndex || {}).length > 0
+    ) {
       return;
     }
 
     const cachedIndex = this.storage.loadStopsSnapshot(
       this.config.storageStopLinesIndexKey,
     );
-    if (this.isNonEmptyObject(cachedIndex)) {
+    const cachedDirections = this.storage.loadStopsSnapshot(
+      this.config.storageStopDirectionsIndexKey,
+    );
+    if (
+      this.isNonEmptyObject(cachedIndex) &&
+      this.isNonEmptyObject(cachedDirections)
+    ) {
       this.stopLinesIndex = cachedIndex;
+      this.stopDirectionsIndex = cachedDirections;
       this.applyStopLinesIndex();
       return;
     }
@@ -603,6 +642,7 @@ export class BusApp {
 
     try {
       const stopLines = {};
+      const stopDirections = {};
       const lineQueue = this.lines.map((line) => String(line.id));
       const workerCount = Math.max(
         1,
@@ -613,15 +653,54 @@ export class BusApp {
       let lastRenderMs = 0;
 
       const mergeLineEntries = (entries, fallbackLineId) => {
+        const requestedLineId = String(fallbackLineId || "").trim();
+        const normalizeDirection = (rawValue) => {
+          const value = String(rawValue || "")
+            .trim()
+            .toUpperCase();
+          if (!value) return "";
+          if (value === "I" || value === "IDA") return "I";
+          if (value === "V" || value === "VUELTA") return "V";
+          if (
+            value === "IV" ||
+            value === "VI" ||
+            value === "IDA,VUELTA" ||
+            value === "VUELTA,IDA"
+          ) {
+            return "IV";
+          }
+          return "";
+        };
+
         entries.forEach((entry) => {
           const stopId = String(
             entry && entry.stopId ? entry.stopId : "",
           ).trim();
           if (!stopId) return;
 
+          const direction = normalizeDirection(
+            entry && entry.sentidoParada ? entry.sentidoParada : "",
+          );
+
           if (!stopLines[stopId]) {
             stopLines[stopId] = new Set();
           }
+
+          if (!stopDirections[stopId]) {
+            stopDirections[stopId] = {};
+          }
+
+          const addDirection = (lineId, value) => {
+            const cleanLineId = String(lineId || "").trim();
+            if (!cleanLineId || !value) return;
+            const current = stopDirections[stopId][cleanLineId];
+            if (!current) {
+              stopDirections[stopId][cleanLineId] = value;
+              return;
+            }
+            if (current.includes(value)) return;
+            stopDirections[stopId][cleanLineId] = `${current},${value}`;
+          };
 
           const lineIds = Array.isArray(entry && entry.lineIds)
             ? entry.lineIds
@@ -629,12 +708,19 @@ export class BusApp {
           if (lineIds.length) {
             lineIds.forEach((lineId) => {
               const clean = String(lineId || "").trim();
-              if (clean) stopLines[stopId].add(clean);
+              if (!clean) return;
+              stopLines[stopId].add(clean);
             });
+            if (direction && requestedLineId) {
+              addDirection(requestedLineId, direction);
+            }
             return;
           }
 
-          stopLines[stopId].add(String(fallbackLineId));
+          if (requestedLineId) {
+            stopLines[stopId].add(requestedLineId);
+            if (direction) addDirection(requestedLineId, direction);
+          }
         });
       };
 
@@ -674,9 +760,14 @@ export class BusApp {
       }
 
       this.stopLinesIndex = flatIndex;
+      this.stopDirectionsIndex = stopDirections;
       this.storage.saveStopsSnapshot(
         this.config.storageStopLinesIndexKey,
         flatIndex,
+      );
+      this.storage.saveStopsSnapshot(
+        this.config.storageStopDirectionsIndexKey,
+        stopDirections,
       );
       this.applyStopLinesIndex();
       this.renderStopsScreen();
@@ -696,23 +787,40 @@ export class BusApp {
   }
 
   async fetchStopsForLineEntriesData(lineId) {
-    try {
-      return await this.api.fetchStopsForLineEntriesDirect(lineId);
-    } catch (directError) {
-      console.warn(
-        "Error en fetch directo de entradas de paradas para indice",
-        directError,
-      );
+    const sentidos = ["I", "V"];
+    const allEntries = [];
+
+    for (let index = 0; index < sentidos.length; index++) {
+      const sentido = sentidos[index];
       try {
-        return await this.api.fetchStopsForLineEntriesViaProxy(lineId);
+        const entries = await this.api.fetchStopsForLineEntriesDirect(
+          lineId,
+          sentido,
+        );
+        allEntries.push(...entries);
+        continue;
+      } catch (directError) {
+        console.warn(
+          `Error en fetch directo de entradas de paradas (${sentido}) para indice`,
+          directError,
+        );
+      }
+
+      try {
+        const entries = await this.api.fetchStopsForLineEntriesViaProxy(
+          lineId,
+          sentido,
+        );
+        allEntries.push(...entries);
       } catch (proxyError) {
         console.warn(
-          "Error en fetch proxy de entradas de paradas para indice",
+          `Error en fetch proxy de entradas de paradas (${sentido}) para indice`,
           proxyError,
         );
-        return [];
       }
     }
+
+    return allEntries;
   }
 
   flattenStopLinesIndex(stopLines) {

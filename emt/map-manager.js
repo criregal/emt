@@ -69,6 +69,15 @@ export class LeafletMapManager {
     const selectedStop =
       expandedMap && expandedMap.stop ? expandedMap.stop : null;
     const selectedStopId = selectedStop ? String(selectedStop.id || "") : "";
+    const selectedLineIds = Array.isArray(
+      expandedMap && expandedMap.selectedLineIds,
+    )
+      ? expandedMap.selectedLineIds
+      : [];
+    const stopDirectionsIndex =
+      expandedMap && expandedMap.stopDirectionsIndex
+        ? expandedMap.stopDirectionsIndex
+        : {};
     const lineStops = Array.isArray(expandedMap && expandedMap.lineStops)
       ? expandedMap.lineStops
       : [];
@@ -82,17 +91,26 @@ export class LeafletMapManager {
       const lon = Number(stop.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
+      const direction = this.resolveStopDirection(
+        stopId,
+        selectedLineIds,
+        stopDirectionsIndex,
+      );
+      const markerStyle = this.getLineStopStyle(direction);
+      const directionLabel = this.getDirectionLabel(direction);
+      const popupText = directionLabel
+        ? `${this.escapeHtml(stop.name || "Parada")} (${this.escapeHtml(stop.id || "-")}) · ${directionLabel}`
+        : `${this.escapeHtml(stop.name || "Parada")} (${this.escapeHtml(stop.id || "-")})`;
+
       window.L.circleMarker([lat, lon], {
         radius: 6,
-        color: "#b91c1c",
+        color: markerStyle.stroke,
         weight: 2,
-        fillColor: "#ef4444",
+        fillColor: markerStyle.fill,
         fillOpacity: 0.9,
       })
         .addTo(map)
-        .bindPopup(
-          `${this.escapeHtml(stop.name || "Parada")} (${this.escapeHtml(stop.id || "-")})`,
-        );
+        .bindPopup(popupText);
 
       boundsPoints.push(window.L.latLng(lat, lon));
     });
@@ -290,6 +308,12 @@ export class LeafletMapManager {
       lon: Number(source.stop.lon),
     };
 
+    const selectedLineIds = Array.isArray(source.selectedLineIds)
+      ? source.selectedLineIds
+      : [];
+    const stopDirectionsIndex =
+      source && source.stopDirectionsIndex ? source.stopDirectionsIndex : {};
+
     const lineStops = Array.isArray(source.lineStops)
       ? source.lineStops
           .map((item) => ({
@@ -297,6 +321,11 @@ export class LeafletMapManager {
             name: String(item && item.name ? item.name : "Parada"),
             lat: Number(item && item.lat),
             lon: Number(item && item.lon),
+            direction: this.resolveStopDirection(
+              String(item && item.id ? item.id : ""),
+              selectedLineIds,
+              stopDirectionsIndex,
+            ),
           }))
           .filter(
             (item) =>
@@ -353,7 +382,9 @@ export class LeafletMapManager {
     <div id="map"></div>
     <div class="legend">
       <span><i class="dot" style="background:#3b82f6"></i>Parada seleccionada</span>
-      <span><i class="dot" style="background:#ef4444"></i>Paradas de la línea</span>
+      <span><i class="dot" style="background:#ef4444"></i>Paradas ida</span>
+      <span><i class="dot" style="background:#3b82f6"></i>Paradas vuelta</span>
+      <span><i class="dot" style="background:#f59e0b"></i>Paradas mixtas</span>
       <span><i class="dot" style="background:#0891b2"></i>Tu ubicación</span>
     </div>
     <script
@@ -375,11 +406,23 @@ export class LeafletMapManager {
 
       data.lineStops.forEach((stop) => {
         if (stop.id === data.stop.id) return;
+        let stroke = "#475569";
+        let fill = "#94a3b8";
+        if (stop.direction === "I") {
+          stroke = "#b91c1c";
+          fill = "#ef4444";
+        } else if (stop.direction === "V") {
+          stroke = "#1d4ed8";
+          fill = "#3b82f6";
+        } else if (stop.direction === "IV") {
+          stroke = "#b45309";
+          fill = "#f59e0b";
+        }
         L.circleMarker([stop.lat, stop.lon], {
           radius: 6,
-          color: "#b91c1c",
+          color: stroke,
           weight: 2,
-          fillColor: "#ef4444",
+          fillColor: fill,
           fillOpacity: 0.9,
         }).addTo(map).bindPopup(stop.name + " (" + stop.id + ")");
         boundsPoints.push(L.latLng(stop.lat, stop.lon));
@@ -414,5 +457,71 @@ export class LeafletMapManager {
       this.currentMap.remove();
     }
     this.currentMap = null;
+  }
+
+  resolveStopDirection(stopId, selectedLineIds, stopDirectionsIndex) {
+    const normalizeDirectionToken = (rawToken) => {
+      const token = String(rawToken || "")
+        .trim()
+        .toUpperCase();
+      if (!token) return "";
+      if (token === "I" || token === "IDA") return "I";
+      if (token === "V" || token === "VUELTA") return "V";
+      if (token === "IV" || token === "VI") return "IV";
+      return "";
+    };
+
+    const cleanStopId = String(stopId || "").trim();
+    if (!cleanStopId) return "";
+
+    const byStop =
+      stopDirectionsIndex && typeof stopDirectionsIndex === "object"
+        ? stopDirectionsIndex[cleanStopId]
+        : null;
+    if (!byStop || typeof byStop !== "object") return "";
+
+    const directions = new Set();
+    selectedLineIds.forEach((lineId) => {
+      const cleanLineId = String(lineId || "").trim();
+      if (!cleanLineId) return;
+      const raw = byStop[cleanLineId];
+      if (!raw) return;
+      const tokens = String(raw)
+        .toUpperCase()
+        .split(/[\s,;|/]+/)
+        .filter(Boolean);
+
+      tokens.forEach((token) => {
+        const normalized = normalizeDirectionToken(token);
+        if (!normalized) return;
+        if (normalized.includes("I")) directions.add("I");
+        if (normalized.includes("V")) directions.add("V");
+      });
+    });
+
+    if (directions.has("I") && directions.has("V")) return "IV";
+    if (directions.has("I")) return "I";
+    if (directions.has("V")) return "V";
+    return "";
+  }
+
+  getLineStopStyle(direction) {
+    if (direction === "I") {
+      return { stroke: "#b91c1c", fill: "#ef4444" };
+    }
+    if (direction === "V") {
+      return { stroke: "#1d4ed8", fill: "#3b82f6" };
+    }
+    if (direction === "IV") {
+      return { stroke: "#b45309", fill: "#f59e0b" };
+    }
+    return { stroke: "#475569", fill: "#94a3b8" };
+  }
+
+  getDirectionLabel(direction) {
+    if (direction === "I") return "Ida";
+    if (direction === "V") return "Vuelta";
+    if (direction === "IV") return "Ida y vuelta";
+    return "";
   }
 }
