@@ -10,6 +10,7 @@ export class LeafletMapManager {
     this.selectedStopPoint = null;
     this.lineBounds = null;
     this.topMenuControl = null;
+    this.lastExpandedMapData = null;
   }
 
   render(expandedMap) {
@@ -28,6 +29,7 @@ export class LeafletMapManager {
     const lat = Number(expandedMap.stop.lat);
     const lon = Number(expandedMap.stop.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    this.lastExpandedMapData = expandedMap;
     this.selectedStopPoint = window.L.latLng(lat, lon);
 
     const mapContainer = document.getElementById(expandedMap.mapContainerId);
@@ -81,11 +83,11 @@ export class LeafletMapManager {
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
       window.L.circleMarker([lat, lon], {
-        radius: 5,
-        color: "#f59e0b",
-        weight: 1.5,
-        fillColor: "#fbbf24",
-        fillOpacity: 0.75,
+        radius: 6,
+        color: "#b91c1c",
+        weight: 2,
+        fillColor: "#ef4444",
+        fillOpacity: 0.9,
       })
         .addTo(map)
         .bindPopup(
@@ -123,6 +125,7 @@ export class LeafletMapManager {
           <button type="button" data-map-action="center-stop" class="rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100 hover:bg-white/20">Centrar parada</button>
           <button type="button" data-map-action="fit-line" class="rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100 hover:bg-white/20">Ver todas</button>
           <button type="button" data-map-action="center-user" class="rounded-md border border-white/20 bg-cyan-500/20 px-2 py-1 font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
+          <button type="button" data-map-action="fullscreen" class="rounded-md border border-emerald-300/30 bg-emerald-500/20 px-2 py-1 font-semibold text-emerald-100 hover:bg-emerald-500/30">Pantalla completa</button>
         </div>
       `;
 
@@ -143,6 +146,10 @@ export class LeafletMapManager {
           }
           if (action === "center-user") {
             this.centerOnUserLocation(map);
+            return;
+          }
+          if (action === "fullscreen") {
+            this.openFullscreenMap();
           }
         });
       });
@@ -253,11 +260,156 @@ export class LeafletMapManager {
     );
   }
 
+  openFullscreenMap() {
+    const data = this.createFullscreenMapData();
+    if (!data || !data.stop) {
+      this.status.show("No hay datos de parada para abrir el mapa", "err");
+      return;
+    }
+
+    const popup = window.open("", "_blank");
+    if (!popup) {
+      this.status.show("El navegador ha bloqueado la nueva pestaña", "err");
+      return;
+    }
+
+    const documentHtml = this.buildFullscreenHtml(data);
+    popup.document.open();
+    popup.document.write(documentHtml);
+    popup.document.close();
+  }
+
+  createFullscreenMapData() {
+    const source = this.lastExpandedMapData;
+    if (!source || !source.stop) return null;
+
+    const stop = {
+      id: String(source.stop.id || ""),
+      name: String(source.stop.name || "Parada"),
+      lat: Number(source.stop.lat),
+      lon: Number(source.stop.lon),
+    };
+
+    const lineStops = Array.isArray(source.lineStops)
+      ? source.lineStops
+          .map((item) => ({
+            id: String(item && item.id ? item.id : ""),
+            name: String(item && item.name ? item.name : "Parada"),
+            lat: Number(item && item.lat),
+            lon: Number(item && item.lon),
+          }))
+          .filter(
+            (item) =>
+              Number.isFinite(item.lat) &&
+              Number.isFinite(item.lon) &&
+              !!item.id,
+          )
+      : [];
+
+    const user = this.userPoint
+      ? { lat: Number(this.userPoint.lat), lon: Number(this.userPoint.lng) }
+      : null;
+
+    return {
+      stop,
+      lineStops,
+      user,
+    };
+  }
+
+  buildFullscreenHtml(data) {
+    const safeData = JSON.stringify(data).replace(/</g, "\\u003c");
+    return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mapa de parada</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <style>
+      html, body, #map { height: 100%; width: 100%; margin: 0; }
+      .legend {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 999;
+        background: rgba(15, 23, 42, 0.88);
+        color: #e2e8f0;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font: 12px/1.3 sans-serif;
+      }
+      .legend span { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+      .dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div class="legend">
+      <span><i class="dot" style="background:#3b82f6"></i>Parada seleccionada</span>
+      <span><i class="dot" style="background:#ef4444"></i>Paradas de la línea</span>
+      <span><i class="dot" style="background:#0891b2"></i>Tu ubicación</span>
+    </div>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script>
+      const data = ${safeData};
+      const map = L.map("map", { zoomControl: true }).setView([data.stop.lat, data.stop.lon], 16);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+
+      const boundsPoints = [];
+      L.marker([data.stop.lat, data.stop.lon]).addTo(map).bindPopup(data.stop.name).openPopup();
+      boundsPoints.push(L.latLng(data.stop.lat, data.stop.lon));
+
+      data.lineStops.forEach((stop) => {
+        if (stop.id === data.stop.id) return;
+        L.circleMarker([stop.lat, stop.lon], {
+          radius: 6,
+          color: "#b91c1c",
+          weight: 2,
+          fillColor: "#ef4444",
+          fillOpacity: 0.9,
+        }).addTo(map).bindPopup(stop.name + " (" + stop.id + ")");
+        boundsPoints.push(L.latLng(stop.lat, stop.lon));
+      });
+
+      if (data.user && Number.isFinite(data.user.lat) && Number.isFinite(data.user.lon)) {
+        L.circleMarker([data.user.lat, data.user.lon], {
+          radius: 7,
+          color: "#22d3ee",
+          weight: 2,
+          fillColor: "#0891b2",
+          fillOpacity: 0.9,
+        }).addTo(map).bindPopup("Tu ubicación actual");
+        boundsPoints.push(L.latLng(data.user.lat, data.user.lon));
+      }
+
+      if (boundsPoints.length >= 2) {
+        map.fitBounds(L.latLngBounds(boundsPoints).pad(0.2));
+      }
+    </script>
+  </body>
+</html>`;
+  }
+
   destroy() {
     this.topMenuControl = null;
     this.userPoint = null;
     this.selectedStopPoint = null;
     this.lineBounds = null;
+    this.lastExpandedMapData = null;
     if (this.currentMap && typeof this.currentMap.remove === "function") {
       this.currentMap.remove();
     }
