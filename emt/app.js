@@ -28,6 +28,7 @@ export class BusApp {
     this.stopsPageSize = 25;
     this.selectedStopLineIds = new Set();
     this.expandedStopId = null;
+    this.expandedLineId = null;
     this.stopArrivalsRequestToken = 0;
   }
 
@@ -74,18 +75,6 @@ export class BusApp {
       );
     }
 
-    if (this.dom.backFromLinesBtn) {
-      this.dom.backFromLinesBtn.addEventListener("click", () =>
-        this.setScreen("menu"),
-      );
-    }
-
-    if (this.dom.backFromStopsBtn) {
-      this.dom.backFromStopsBtn.addEventListener("click", () =>
-        this.setScreen("menu"),
-      );
-    }
-
     if (this.dom.linesBackIosBtn) {
       this.dom.linesBackIosBtn.addEventListener("click", () =>
         this.setScreen("menu"),
@@ -120,33 +109,6 @@ export class BusApp {
       this.dom.stopsMenuToLinesBtn.addEventListener("click", () =>
         this.setScreen("lines"),
       );
-    }
-
-    if (this.dom.saveBtn) {
-      this.dom.saveBtn.addEventListener("click", () => {
-        this.storage.saveLines(this.lines);
-      });
-    }
-
-    if (this.dom.clearBtn) {
-      this.dom.clearBtn.addEventListener("click", () => {
-        if (!confirm("Borrar datos locales (localStorage)?")) return;
-        this.storage.clearLines();
-        localStorage.removeItem(this.config.storageStopsKey);
-        localStorage.removeItem(this.config.storageStopsNormalizedKey);
-        localStorage.removeItem(this.config.storageStopLinesIndexKey);
-        localStorage.removeItem(this.config.storageStopDirectionsIndexKey);
-        this.lines = [];
-        this.allStops = [];
-        this.stopLinesIndex = {};
-        this.stopDirectionsIndex = {};
-        this.selectedStopLineIds.clear();
-        this.expandedStopId = null;
-        this.destroyLeafletMap();
-        this.updateStopLineFilterLabel();
-        this.renderCurrentScreen();
-        this.status.show("Datos locales borrados", "ok");
-      });
     }
 
     if (this.dom.searchLine) {
@@ -235,16 +197,6 @@ export class BusApp {
       this.dom.stopsNextPageBtn.addEventListener("click", () => {
         this.stopsPage += 1;
         this.renderStopsScreen();
-      });
-    }
-
-    if (this.dom.reloadBtn) {
-      this.dom.reloadBtn.addEventListener("click", () => {
-        this.stopLinesIndex = {};
-        this.stopDirectionsIndex = {};
-        localStorage.removeItem(this.config.storageStopLinesIndexKey);
-        localStorage.removeItem(this.config.storageStopDirectionsIndexKey);
-        this.fetchLinesFromWFS();
       });
     }
 
@@ -515,6 +467,10 @@ export class BusApp {
   }
 
   setScreen(screen) {
+    if (screen !== "lines") {
+      this.expandedLineId = null;
+    }
+
     if (screen !== "stops") {
       this.expandedStopId = null;
       this.destroyLeafletMap();
@@ -553,9 +509,41 @@ export class BusApp {
 
   renderLinesScreen() {
     const search = this.dom.searchLine ? this.dom.searchLine.value : "";
-    this.view.renderLinesTable(this.lines, search, (lineId) => {
-      this.loadStopsForLine(lineId);
-    });
+    this.view.renderLinesTable(
+      this.lines,
+      search,
+      this.expandedLineId,
+      this.fetchingStops,
+      (line) => this.toggleLineStops(line),
+    );
+  }
+
+  async toggleLineStops(line) {
+    const lineId = String(line && line.id ? line.id : "").trim();
+    if (!lineId) return;
+
+    if (this.expandedLineId === lineId) {
+      this.expandedLineId = null;
+      this.renderLinesScreen();
+      return;
+    }
+
+    this.expandedLineId = lineId;
+    this.renderLinesScreen();
+
+    const target = this.lines.find((item) => String(item.id) === lineId);
+    const hasStops = !!(
+      target &&
+      Array.isArray(target.stops) &&
+      target.stops.length
+    );
+
+    if (hasStops || this.fetchingStops) return;
+
+    await this.loadStopsForLine(lineId);
+    if (this.activeScreen === "lines") {
+      this.renderLinesScreen();
+    }
   }
 
   renderStopsScreen() {

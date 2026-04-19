@@ -5,8 +5,6 @@ export class DomRefs {
     this.stopsView = document.getElementById("stopsView");
     this.goLinesBtn = document.getElementById("goLinesBtn");
     this.goStopsBtn = document.getElementById("goStopsBtn");
-    this.backFromLinesBtn = document.getElementById("backFromLinesBtn");
-    this.backFromStopsBtn = document.getElementById("backFromStopsBtn");
     this.linesBackIosBtn = document.getElementById("linesBackIosBtn");
     this.linesMenuToMenuBtn = document.getElementById("linesMenuToMenuBtn");
     this.linesMenuToStopsBtn = document.getElementById("linesMenuToStopsBtn");
@@ -36,10 +34,7 @@ export class DomRefs {
     this.stopsNextPageBtn = document.getElementById("stopsNextPageBtn");
     this.stopsPageInfo = document.getElementById("stopsPageInfo");
 
-    this.saveBtn = document.getElementById("saveBtn");
-    this.clearBtn = document.getElementById("clearBtn");
     this.statusContainer = document.getElementById("statusContainer");
-    this.reloadBtn = document.getElementById("reloadBtn");
   }
 }
 
@@ -98,7 +93,13 @@ export class BusView {
     this.dom = domRefs;
   }
 
-  renderLinesTable(lines, query, onLoadStops) {
+  renderLinesTable(
+    lines,
+    query,
+    expandedLineId = null,
+    isLoadingStops = false,
+    onToggleLine = null,
+  ) {
     const { linesTableBody } = this.dom;
     if (!linesTableBody) return;
 
@@ -120,14 +121,69 @@ export class BusView {
     }
 
     filtered.forEach((line) => {
+      const lineId = String(line.id);
+      const isExpanded = String(expandedLineId || "") === lineId;
+      const toggleIcon = isExpanded ? "▾" : "▸";
+      const toggleLabel = isExpanded ? "Contraer" : "Desplegar";
       const row = document.createElement("tr");
-      row.className = "hover:bg-white/10";
+      row.className = "cursor-pointer hover:bg-white/10";
+      row.setAttribute("tabindex", "0");
       row.innerHTML = `
         <td class="px-4 py-3"><span class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">${this.escapeHtml(line.id)}</span></td>
-        <td class="px-4 py-3 text-slate-100">${this.escapeHtml(line.name)}</td>
+        <td class="px-4 py-3 text-slate-100">
+          <div class="flex items-center justify-between gap-3">
+            <span>${this.escapeHtml(line.name)}</span>
+            <span class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-white/10 text-sm text-slate-100" aria-label="${toggleLabel}">${toggleIcon}</span>
+          </div>
+        </td>
       `;
 
+      const triggerToggle = () => {
+        if (typeof onToggleLine === "function") {
+          onToggleLine(line);
+        }
+      };
+
+      row.addEventListener("click", triggerToggle);
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          triggerToggle();
+        }
+      });
+
       linesTableBody.appendChild(row);
+
+      if (!isExpanded) return;
+
+      const detailsRow = document.createElement("tr");
+      detailsRow.className = "bg-slate-900/35";
+      const detailsCell = document.createElement("td");
+      detailsCell.colSpan = 2;
+      detailsCell.className = "px-4 py-3";
+
+      const stops = Array.isArray(line.stops) ? line.stops : [];
+      if (isLoadingStops && !stops.length) {
+        detailsCell.innerHTML =
+          '<div class="rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">Cargando paradas...</div>';
+      } else if (!stops.length) {
+        detailsCell.innerHTML =
+          '<div class="rounded-xl border border-slate-300/20 bg-slate-800/35 px-3 py-2 text-xs text-slate-200">No hay paradas cargadas para esta linea.</div>';
+      } else {
+        const listItems = stops
+          .map(
+            (stop) =>
+              `<li class="rounded-lg border border-white/10 bg-white/5 px-2 py-1">${this.escapeHtml(stop)}</li>`,
+          )
+          .join("");
+        detailsCell.innerHTML = `
+          <div class="text-xs uppercase tracking-[0.16em] text-cyan-100/80">Paradas de la linea</div>
+          <ul class="mt-2 grid gap-1 text-sm text-slate-100">${listItems}</ul>
+        `;
+      }
+
+      detailsRow.appendChild(detailsCell);
+      linesTableBody.appendChild(detailsRow);
     });
   }
 
