@@ -15,6 +15,8 @@ export class LeafletMapManager {
     this.mapContainerElement = null;
     this.routeLayer = null;
     this.routeRequestController = null;
+    this.routeSummaryElementId = "";
+    this.mapRoutePanelElementId = "";
   }
 
   render(expandedMap) {
@@ -34,6 +36,8 @@ export class LeafletMapManager {
     const lon = Number(expandedMap.stop.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
     this.lastExpandedMapData = expandedMap;
+    this.routeSummaryElementId = String(expandedMap.routeSummaryId || "");
+    this.mapRoutePanelElementId = String(expandedMap.mapRoutePanelId || "");
     this.selectedStopPoint = window.L.latLng(lat, lon);
 
     const mapContainer = document.getElementById(expandedMap.mapContainerId);
@@ -65,6 +69,12 @@ export class LeafletMapManager {
 
     this.currentMap = map;
     this.mapContainerElement = mapContainer;
+    this.ensureMapRoutePanel(mapContainer, this.mapRoutePanelElementId);
+    this.updateRoutePanels({
+      distanceText: "-",
+      durationApiText: "-",
+      durationAverageText: "-",
+    });
     this.setupResizeHandling(map, mapContainer);
     setTimeout(() => {
       if (this.currentMap) this.currentMap.invalidateSize();
@@ -351,6 +361,11 @@ export class LeafletMapManager {
       if (showStatusOnError) {
         this.status.show("No hay parada seleccionada para trazar ruta", "err");
       }
+      this.updateRoutePanels({
+        distanceText: "-",
+        durationApiText: "-",
+        durationAverageText: "-",
+      });
       return;
     }
 
@@ -392,6 +407,7 @@ export class LeafletMapManager {
         throw new Error("Coordenadas de ruta invalidas");
       }
 
+      const routeMetrics = this.buildRouteMetrics(route);
       this.clearRouteLayer(map);
       this.routeLayer = window.L.polyline(latLngs, {
         color: "#f59e0b",
@@ -399,7 +415,7 @@ export class LeafletMapManager {
         opacity: 0.95,
       })
         .addTo(map)
-        .bindPopup(this.buildRouteSummary(route));
+        .bindPopup(this.buildRouteSummary(routeMetrics));
 
       if (fitBounds) {
         const routeBounds = this.routeLayer.getBounds();
@@ -408,9 +424,18 @@ export class LeafletMapManager {
         }
       }
 
-      this.status.show("Ruta a pie calculada", "ok");
+      this.status.show(
+        `Ruta a pie: ${routeMetrics.distanceText} · ${routeMetrics.durationApiText} (media ${routeMetrics.durationAverageText})`,
+        "ok",
+      );
+      this.updateRoutePanels(routeMetrics);
     } catch (error) {
       console.warn("No se pudo calcular la ruta", error);
+      this.updateRoutePanels({
+        distanceText: "-",
+        durationApiText: "-",
+        durationAverageText: "-",
+      });
       if (showStatusOnError) {
         this.status.show("No se pudo calcular la ruta a pie", "err");
       }
@@ -476,20 +501,86 @@ export class LeafletMapManager {
     }
   }
 
-  buildRouteSummary(route) {
+  buildRouteMetrics(route) {
     const distanceMeters = Number(route && route.distanceMeters);
     const durationSeconds = Number(route && route.durationSeconds);
+
+    // Estimacion media de marcha a pie: 5 km/h.
+    const averageWalkingSpeedMps = 5000 / 3600;
+    const averageDurationSeconds = Number.isFinite(distanceMeters)
+      ? distanceMeters / averageWalkingSpeedMps
+      : NaN;
 
     const distanceText = Number.isFinite(distanceMeters)
       ? distanceMeters >= 1000
         ? `${(distanceMeters / 1000).toFixed(2)} km`
         : `${Math.round(distanceMeters)} m`
       : "-";
-    const durationText = Number.isFinite(durationSeconds)
-      ? `${Math.max(1, Math.round(durationSeconds / 60))} min`
-      : "-";
 
-    return `Ruta a pie · ${distanceText} · ${durationText}`;
+    const durationApiText = this.formatMinutes(durationSeconds);
+    const durationAverageText = this.formatMinutes(averageDurationSeconds);
+
+    return {
+      distanceText,
+      durationApiText,
+      durationAverageText,
+    };
+  }
+
+  formatMinutes(seconds) {
+    return Number.isFinite(seconds)
+      ? `${Math.max(1, Math.round(seconds / 60))} min`
+      : "-";
+  }
+
+  buildRouteSummary(routeMetrics) {
+    const safeMetrics = routeMetrics || {};
+    const distanceText = safeMetrics.distanceText || "-";
+    const durationApiText = safeMetrics.durationApiText || "-";
+    const durationAverageText = safeMetrics.durationAverageText || "-";
+
+    return `Ruta a pie · ${distanceText} · ${durationApiText} (media ${durationAverageText})`;
+  }
+
+  buildRoutePanelText(routeMetrics) {
+    const safeMetrics = routeMetrics || {};
+    const distanceText = safeMetrics.distanceText || "-";
+    const durationApiText = safeMetrics.durationApiText || "-";
+    const durationAverageText = safeMetrics.durationAverageText || "-";
+    return `Distancia: ${distanceText} · Tiempo ruta: ${durationApiText} · Tiempo medio: ${durationAverageText}`;
+  }
+
+  updateRoutePanels(routeMetrics) {
+    const text = this.buildRoutePanelText(routeMetrics);
+
+    if (this.routeSummaryElementId) {
+      const rowPanel = document.getElementById(this.routeSummaryElementId);
+      if (rowPanel) {
+        rowPanel.textContent = `Ruta a pie: ${text}`;
+      }
+    }
+
+    if (this.mapRoutePanelElementId) {
+      const mapPanel = document.getElementById(this.mapRoutePanelElementId);
+      if (mapPanel) {
+        mapPanel.textContent = text;
+      }
+    }
+  }
+
+  ensureMapRoutePanel(mapContainer, panelId) {
+    if (!mapContainer || !panelId) return;
+
+    let panel = document.getElementById(panelId);
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = panelId;
+      panel.className =
+        "pointer-events-none absolute bottom-2 left-2 right-2 z-[450] rounded-lg border border-white/15 bg-slate-900/80 px-3 py-2 text-xs text-slate-100 shadow";
+      mapContainer.appendChild(panel);
+    }
+
+    panel.textContent = "Distancia: - · Tiempo ruta: - · Tiempo medio: -";
   }
 
   clearRouteLayer(map) {
@@ -661,6 +752,8 @@ export class LeafletMapManager {
     this.selectedStopPoint = null;
     this.lineBounds = null;
     this.lastExpandedMapData = null;
+    this.routeSummaryElementId = "";
+    this.mapRoutePanelElementId = "";
     if (this.routeRequestController) {
       this.routeRequestController.abort();
       this.routeRequestController = null;
