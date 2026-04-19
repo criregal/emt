@@ -17,6 +17,7 @@ export class LeafletMapManager {
     this.routeRequestController = null;
     this.routeSummaryElementId = "";
     this.mapRoutePanelElementId = "";
+    this.routeTargetStop = null;
   }
 
   render(expandedMap) {
@@ -39,6 +40,10 @@ export class LeafletMapManager {
     this.routeSummaryElementId = String(expandedMap.routeSummaryId || "");
     this.mapRoutePanelElementId = String(expandedMap.mapRoutePanelId || "");
     this.selectedStopPoint = window.L.latLng(lat, lon);
+    this.routeTargetStop = {
+      id: String(expandedMap.stop.id || ""),
+      name: String(expandedMap.stop.name || "Parada"),
+    };
 
     const mapContainer = document.getElementById(expandedMap.mapContainerId);
     if (!mapContainer) return;
@@ -53,10 +58,25 @@ export class LeafletMapManager {
       attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
 
-    window.L.marker([lat, lon])
+    const selectedStopMarker = window.L.marker([lat, lon])
       .addTo(map)
       .bindPopup(this.escapeHtml(expandedMap.stop.name || "Parada"))
       .openPopup();
+    selectedStopMarker.on("click", () => {
+      this.selectRouteTargetStop(
+        {
+          id: String(expandedMap.stop.id || ""),
+          name: String(expandedMap.stop.name || "Parada"),
+          lat,
+          lon,
+        },
+        map,
+        {
+          fitBounds: true,
+          showStatusOnError: true,
+        },
+      );
+    });
 
     this.addLineStopsMarkers(map, expandedMap);
     this.addTopMenuControl(map);
@@ -144,7 +164,7 @@ export class LeafletMapManager {
         ? `${this.escapeHtml(stop.name || "Parada")} (${this.escapeHtml(stop.id || "-")}) · ${directionLabel}`
         : `${this.escapeHtml(stop.name || "Parada")} (${this.escapeHtml(stop.id || "-")})`;
 
-      window.L.circleMarker([lat, lon], {
+      const marker = window.L.circleMarker([lat, lon], {
         radius: 6,
         color: markerStyle.stroke,
         weight: 2,
@@ -153,6 +173,22 @@ export class LeafletMapManager {
       })
         .addTo(map)
         .bindPopup(popupText);
+
+      marker.on("click", () => {
+        this.selectRouteTargetStop(
+          {
+            id: stopId,
+            name: String(stop.name || "Parada"),
+            lat,
+            lon,
+          },
+          map,
+          {
+            fitBounds: true,
+            showStatusOnError: true,
+          },
+        );
+      });
 
       boundsPoints.push(window.L.latLng(lat, lon));
     });
@@ -355,6 +391,20 @@ export class LeafletMapManager {
     popup.document.close();
   }
 
+  selectRouteTargetStop(stop, map, options = {}) {
+    const lat = Number(stop && stop.lat);
+    const lon = Number(stop && stop.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+    this.selectedStopPoint = window.L.latLng(lat, lon);
+    this.routeTargetStop = {
+      id: String((stop && stop.id) || ""),
+      name: String((stop && stop.name) || "Parada"),
+    };
+
+    this.drawRouteToSelectedStop(map, options);
+  }
+
   async drawRouteToSelectedStop(map, options = {}) {
     const { fitBounds = true, showStatusOnError = false } = options;
 
@@ -548,7 +598,14 @@ export class LeafletMapManager {
     const distanceText = safeMetrics.distanceText || "-";
     const durationApiText = safeMetrics.durationApiText || "-";
     const durationAverageText = safeMetrics.durationAverageText || "-";
-    return `Distancia: ${distanceText} · Tiempo ruta: ${durationApiText} · Tiempo medio: ${durationAverageText}`;
+    const targetName = this.routeTargetStop
+      ? String(this.routeTargetStop.name || "Parada")
+      : "Parada";
+    const targetId = this.routeTargetStop
+      ? String(this.routeTargetStop.id || "")
+      : "";
+    const targetText = targetId ? `${targetName} (${targetId})` : targetName;
+    return `Destino: ${targetText} · Distancia: ${distanceText} · Tiempo ruta: ${durationApiText} · Tiempo medio: ${durationAverageText}`;
   }
 
   updateRoutePanels(routeMetrics) {
@@ -755,6 +812,7 @@ export class LeafletMapManager {
     this.lastExpandedMapData = null;
     this.routeSummaryElementId = "";
     this.mapRoutePanelElementId = "";
+    this.routeTargetStop = null;
     if (this.routeRequestController) {
       this.routeRequestController.abort();
       this.routeRequestController = null;
