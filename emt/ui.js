@@ -125,6 +125,7 @@ export class BusView {
       const isExpanded = String(expandedLineId || "") === lineId;
       const toggleIcon = isExpanded ? "▾" : "▸";
       const toggleLabel = isExpanded ? "Contraer" : "Desplegar";
+      const lineNameHtml = this.renderLineNameTwoLines(line.name);
       const row = document.createElement("tr");
       row.className = "cursor-pointer hover:bg-white/10";
       row.setAttribute("tabindex", "0");
@@ -132,7 +133,7 @@ export class BusView {
         <td class="px-4 py-3"><span class="inline-flex items-center rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">${this.escapeHtml(line.id)}</span></td>
         <td class="px-4 py-3 text-slate-100">
           <div class="flex items-center justify-between gap-3">
-            <span>${this.escapeHtml(line.name)}</span>
+            <span>${lineNameHtml}</span>
             <span class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-white/10 text-sm text-slate-100" aria-label="${toggleLabel}">${toggleIcon}</span>
           </div>
         </td>
@@ -185,6 +186,21 @@ export class BusView {
       detailsRow.appendChild(detailsCell);
       linesTableBody.appendChild(detailsRow);
     });
+  }
+
+  renderLineNameTwoLines(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+
+    const parts = text.split(/\s*-\s*/).filter(Boolean);
+    if (parts.length < 2) {
+      return this.escapeHtml(text);
+    }
+
+    const firstLine = this.escapeHtml(parts[0]);
+    const secondLine = this.escapeHtml(parts.slice(1).join(" - "));
+
+    return `<span class="block">${firstLine}</span><span class="block text-slate-300">${secondLine}</span>`;
   }
 
   renderStopsTable(
