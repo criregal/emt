@@ -295,14 +295,15 @@ export class BusView {
     let expandedMap = null;
 
     paginated.forEach((stop) => {
+      const stopNameHtml = this.renderLineNameTwoLines(stop.name);
       const lineBadges = this.renderStopLineBadgesHtml(stop);
       const row = document.createElement("tr");
       row.className =
         "cursor-pointer hover:bg-white/10 focus-within:bg-white/10";
       row.setAttribute("tabindex", "0");
       row.innerHTML = `
-        <td class="px-4 py-3 font-semibold text-fuchsia-200">${this.escapeHtml(stop.id)}</td>
-        <td class="px-4 py-3 text-slate-100">${this.escapeHtml(stop.name)}</td>
+        <td class="w-[4ch] max-w-[4ch] overflow-hidden text-ellipsis whitespace-nowrap px-1 py-3 font-semibold text-fuchsia-200">${this.escapeHtml(stop.id)}</td>
+        <td class="w-[58%] px-4 py-3 text-slate-100">${stopNameHtml}</td>
         <td class="px-4 py-3">${lineBadges}</td>
       `;
 
