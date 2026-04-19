@@ -1,0 +1,809 @@
+import { DomRefs, StatusPresenter, LoadingPresenter, BusView } from "./ui.js";
+import { StorageService, EMTApi } from "./services.js";
+import { LeafletMapManager } from "./map-manager.js";
+
+export class BusApp {
+  constructor(config) {
+    this.config = config;
+    this.dom = new DomRefs();
+    this.status = new StatusPresenter(this.dom.statusContainer);
+    this.loading = new LoadingPresenter();
+    this.storage = new StorageService(this.config.storageKey, this.status);
+    this.api = new EMTApi(this.config);
+    this.view = new BusView(this.dom);
+    this.mapManager = new LeafletMapManager(this.status, (value) =>
+      this.view.escapeHtml(value),
+    );
+
+    this.lines = [];
+    this.allStops = [];
+    this.stopLinesIndex = {};
+    this.buildingStopLinesIndex = false;
+    this.activeScreen = "menu";
+    this.fetchingStops = false;
+    this.stopsPage = 1;
+    this.stopsPageSize = 25;
+    this.selectedStopLineIds = new Set();
+    this.expandedStopId = null;
+  }
+
+  async init() {
+    this.loading.show("Preparando aplicacion...");
+    this.bindEvents();
+
+    this.prepareFirstRun();
+
+    try {
+      this.loading.show("Cargando lineas y paradas...");
+      await this.fetchLinesFromWFS();
+      await this.prefetchStopsSnapshot();
+      this.setScreen("menu");
+    } catch (error) {
+      console.error("Inicio: error al cargar líneas", error);
+    } finally {
+      this.loading.hide();
+    }
+  }
+
+  prepareFirstRun() {
+    const firstRunDone = localStorage.getItem(this.config.firstRunFlagKey);
+    if (firstRunDone) return;
+
+    localStorage.removeItem(this.config.storageKey);
+    localStorage.removeItem(this.config.storageStopsKey);
+    localStorage.removeItem(this.config.storageStopsNormalizedKey);
+    localStorage.removeItem(this.config.storageStopLinesIndexKey);
+    localStorage.setItem(this.config.firstRunFlagKey, "1");
+  }
+
+  bindEvents() {
+    if (this.dom.goLinesBtn) {
+      this.dom.goLinesBtn.addEventListener("click", () =>
+        this.setScreen("lines"),
+      );
+    }
+
+    if (this.dom.goStopsBtn) {
+      this.dom.goStopsBtn.addEventListener("click", () =>
+        this.setScreen("stops"),
+      );
+    }
+
+    if (this.dom.backFromLinesBtn) {
+      this.dom.backFromLinesBtn.addEventListener("click", () =>
+        this.setScreen("menu"),
+      );
+    }
+
+    if (this.dom.backFromStopsBtn) {
+      this.dom.backFromStopsBtn.addEventListener("click", () =>
+        this.setScreen("menu"),
+      );
+    }
+
+    if (this.dom.saveBtn) {
+      this.dom.saveBtn.addEventListener("click", () => {
+        this.storage.saveLines(this.lines);
+      });
+    }
+
+    if (this.dom.clearBtn) {
+      this.dom.clearBtn.addEventListener("click", () => {
+        if (!confirm("Borrar datos locales (localStorage)?")) return;
+        this.storage.clearLines();
+        localStorage.removeItem(this.config.storageStopsKey);
+        localStorage.removeItem(this.config.storageStopsNormalizedKey);
+        this.lines = [];
+        this.allStops = [];
+        this.stopLinesIndex = {};
+        this.selectedStopLineIds.clear();
+        this.expandedStopId = null;
+        this.destroyLeafletMap();
+        this.updateStopLineFilterLabel();
+        this.renderCurrentScreen();
+        this.status.show("Datos locales borrados", "ok");
+      });
+    }
+
+    if (this.dom.searchLine) {
+      this.dom.searchLine.addEventListener("input", () => {
+        this.updateSearchClearButtons();
+        if (this.activeScreen === "lines") this.renderLinesScreen();
+      });
+    }
+
+    if (this.dom.clearSearchLineBtn && this.dom.searchLine) {
+      this.dom.clearSearchLineBtn.addEventListener("click", () => {
+        this.dom.searchLine.value = "";
+        this.updateSearchClearButtons();
+        if (this.activeScreen === "lines") this.renderLinesScreen();
+        this.dom.searchLine.focus();
+      });
+    }
+
+    if (this.dom.searchStopName) {
+      this.dom.searchStopName.addEventListener("input", () => {
+        this.stopsPage = 1;
+        this.updateSearchClearButtons();
+        if (this.activeScreen === "stops") this.renderStopsScreen();
+      });
+    }
+
+    if (this.dom.clearSearchStopNameBtn && this.dom.searchStopName) {
+      this.dom.clearSearchStopNameBtn.addEventListener("click", () => {
+        this.dom.searchStopName.value = "";
+        this.stopsPage = 1;
+        this.updateSearchClearButtons();
+        if (this.activeScreen === "stops") this.renderStopsScreen();
+        this.dom.searchStopName.focus();
+      });
+    }
+
+    if (this.dom.stopLineFilterBtn) {
+      this.dom.stopLineFilterBtn.addEventListener("click", () => {
+        const isHidden = this.dom.stopLineFilterPanel
+          ? this.dom.stopLineFilterPanel.classList.contains("hidden")
+          : true;
+        if (isHidden) {
+          this.openStopLineFilterPanel();
+        } else {
+          this.closeStopLineFilterPanel();
+        }
+      });
+    }
+
+    if (this.dom.clearStopLineFiltersBtn) {
+      this.dom.clearStopLineFiltersBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.selectedStopLineIds.clear();
+        this.syncStopLineCheckboxes();
+        this.updateStopLineFilterLabel();
+        this.stopsPage = 1;
+        if (this.activeScreen === "stops") this.renderStopsScreen();
+      });
+    }
+
+    document.addEventListener("click", (event) => {
+      if (!this.dom.stopLineFilterPanel || !this.dom.stopLineFilterBtn) return;
+      const panel = this.dom.stopLineFilterPanel;
+      const button = this.dom.stopLineFilterBtn;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (panel.contains(target) || button.contains(target)) return;
+      this.closeStopLineFilterPanel();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        this.closeStopLineFilterPanel();
+      }
+    });
+
+    if (this.dom.stopsPrevPageBtn) {
+      this.dom.stopsPrevPageBtn.addEventListener("click", () => {
+        if (this.stopsPage <= 1) return;
+        this.stopsPage -= 1;
+        this.renderStopsScreen();
+      });
+    }
+
+    if (this.dom.stopsNextPageBtn) {
+      this.dom.stopsNextPageBtn.addEventListener("click", () => {
+        this.stopsPage += 1;
+        this.renderStopsScreen();
+      });
+    }
+
+    if (this.dom.reloadBtn) {
+      this.dom.reloadBtn.addEventListener("click", () => {
+        this.stopLinesIndex = {};
+        localStorage.removeItem(this.config.storageStopLinesIndexKey);
+        this.fetchLinesFromWFS();
+      });
+    }
+
+    this.updateSearchClearButtons();
+  }
+
+  updateSearchClearButtons() {
+    if (this.dom.clearSearchLineBtn && this.dom.searchLine) {
+      const show = String(this.dom.searchLine.value || "").trim() !== "";
+      this.dom.clearSearchLineBtn.classList.toggle("hidden", !show);
+    }
+
+    if (this.dom.clearSearchStopNameBtn && this.dom.searchStopName) {
+      const show = String(this.dom.searchStopName.value || "").trim() !== "";
+      this.dom.clearSearchStopNameBtn.classList.toggle("hidden", !show);
+    }
+  }
+
+  renderStopLineFilterOptions() {
+    const optionsContainer = this.dom.stopLineFilterOptions;
+    if (!optionsContainer) return;
+
+    const sortedLineIds = this.lines
+      .map((line) => String(line.id).trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
+
+    optionsContainer.innerHTML = "";
+    if (!sortedLineIds.length) {
+      const emptyText = document.createElement("p");
+      emptyText.className = "px-2 py-3 text-xs text-slate-300/80";
+      emptyText.textContent = "No hay lineas disponibles";
+      optionsContainer.appendChild(emptyText);
+      return;
+    }
+
+    sortedLineIds.forEach((lineId) => {
+      const item = document.createElement("label");
+      item.className =
+        "flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-sm text-slate-100 transition hover:bg-white/10";
+      item.innerHTML = `
+        <input type="checkbox" value="${this.view.escapeHtml(lineId)}" class="h-4 w-4 rounded border-white/30 bg-slate-800 text-fuchsia-300 focus:ring-fuchsia-400/50" />
+        <span>Linea ${this.view.escapeHtml(lineId)}</span>
+      `;
+
+      const checkbox = item.querySelector("input[type='checkbox']");
+      if (checkbox) {
+        checkbox.checked = this.selectedStopLineIds.has(lineId);
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) {
+            this.selectedStopLineIds.add(lineId);
+          } else {
+            this.selectedStopLineIds.delete(lineId);
+          }
+          this.updateStopLineFilterLabel();
+          this.stopsPage = 1;
+          if (this.activeScreen === "stops") this.renderStopsScreen();
+        });
+      }
+
+      optionsContainer.appendChild(item);
+    });
+  }
+
+  syncStopLineCheckboxes() {
+    const optionsContainer = this.dom.stopLineFilterOptions;
+    if (!optionsContainer) return;
+    const checkboxes = optionsContainer.querySelectorAll(
+      "input[type='checkbox']",
+    );
+    checkboxes.forEach((checkbox) => {
+      const lineId = String(checkbox.value || "").trim();
+      checkbox.checked = this.selectedStopLineIds.has(lineId);
+    });
+  }
+
+  updateStopLineFilterLabel() {
+    if (!this.dom.stopLineFilterLabel) return;
+    const selectedCount = this.selectedStopLineIds.size;
+    if (!selectedCount) {
+      this.dom.stopLineFilterLabel.textContent = "Todas las lineas";
+      return;
+    }
+
+    if (selectedCount <= 2) {
+      const selected = Array.from(this.selectedStopLineIds).sort((a, b) =>
+        a.localeCompare(b, "es", { numeric: true }),
+      );
+      this.dom.stopLineFilterLabel.textContent = `Lineas: ${selected.join(", ")}`;
+      return;
+    }
+
+    this.dom.stopLineFilterLabel.textContent = `${selectedCount} lineas seleccionadas`;
+  }
+
+  openStopLineFilterPanel() {
+    if (!this.dom.stopLineFilterPanel) return;
+    this.dom.stopLineFilterPanel.classList.remove("hidden");
+    if (this.dom.stopLineFilterBtn) {
+      this.dom.stopLineFilterBtn.setAttribute("aria-expanded", "true");
+    }
+  }
+
+  closeStopLineFilterPanel() {
+    if (!this.dom.stopLineFilterPanel) return;
+    this.dom.stopLineFilterPanel.classList.add("hidden");
+    if (this.dom.stopLineFilterBtn) {
+      this.dom.stopLineFilterBtn.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  async fetchLinesFromWFS() {
+    this.status.show("Intentando cargar líneas desde WFS (directo)...");
+    try {
+      const geoJson = await this.api.fetchLinesDirect();
+      this.setLinesFromGeoJson(geoJson, "directo");
+      return true;
+    } catch (directError) {
+      console.warn("Error fetch directo WFS", directError);
+      this.status.show("Fetch directo falló: intentando proxy CORS...", "info");
+    }
+
+    try {
+      const geoJsonProxy = await this.api.fetchLinesViaProxy();
+      this.setLinesFromGeoJson(geoJsonProxy, "proxy");
+      return true;
+    } catch (proxyError) {
+      console.error("Error fetch via proxy", proxyError);
+    }
+
+    const storedLines = this.storage.loadLines();
+    if (storedLines.length) {
+      this.lines = storedLines;
+      this.renderCurrentScreen();
+      this.status.show(
+        "WFS no disponible: cargadas líneas desde localStorage",
+        "ok",
+      );
+      return false;
+    }
+
+    this.lines = [];
+    this.renderCurrentScreen();
+    this.status.show(
+      "No se pudieron cargar líneas (WFS y proxy fallaron).",
+      "err",
+    );
+    return false;
+  }
+
+  setLinesFromGeoJson(geoJson, sourceLabel) {
+    if (!geoJson || !Array.isArray(geoJson.features)) {
+      throw new Error("Respuesta WFS inválida: no hay features");
+    }
+
+    this.lines = geoJson.features.map((feature) => {
+      const properties = feature.properties || {};
+      const rawId =
+        properties.ID_PUBLICO !== undefined && properties.ID_PUBLICO !== null
+          ? properties.ID_PUBLICO
+          : properties.ID ||
+            properties.id ||
+            properties.CODIGO ||
+            this.createUid();
+      const rawName =
+        properties.NOMBRE_LINEA !== undefined &&
+        properties.NOMBRE_LINEA !== null
+          ? properties.NOMBRE_LINEA
+          : properties.NOMBRE || properties.nombre || String(rawId);
+
+      return {
+        id: String(rawId),
+        name: String(rawName),
+        color: this.colorFromString(String(rawId)),
+        stops: [],
+      };
+    });
+
+    this.storage.saveLines(this.lines);
+    this.stopLinesIndex = {};
+    localStorage.removeItem(this.config.storageStopLinesIndexKey);
+    this.renderCurrentScreen();
+    this.status.show(
+      `Cargadas ${this.lines.length} líneas desde ${sourceLabel} (se usan ID_PUBLICO y NOMBRE_LINEA).`,
+      "ok",
+    );
+  }
+
+  async prefetchStopsSnapshot() {
+    try {
+      const geoJson = await this.api.fetchAllStopsSnapshot();
+      const normalized = this.api.normalizeStopsGeoJson(geoJson);
+      this.allStops = normalized;
+      const cachedIndex = this.storage.loadStopsSnapshot(
+        this.config.storageStopLinesIndexKey,
+      );
+      this.stopLinesIndex = this.isNonEmptyObject(cachedIndex)
+        ? cachedIndex
+        : {};
+      this.applyStopLinesIndex();
+      this.storage.saveStopsSnapshot(this.config.storageStopsKey, geoJson);
+      this.storage.saveStopsSnapshot(
+        this.config.storageStopsNormalizedKey,
+        normalized,
+      );
+      console.log("Todas las paradas cargadas y guardadas en localStorage");
+    } catch (error) {
+      console.error("Error al cargar todas las paradas", error);
+      const cachedNormalized = this.storage.loadStopsSnapshot(
+        this.config.storageStopsNormalizedKey,
+      );
+      if (Array.isArray(cachedNormalized)) {
+        this.allStops = cachedNormalized;
+        const cachedIndex = this.storage.loadStopsSnapshot(
+          this.config.storageStopLinesIndexKey,
+        );
+        this.stopLinesIndex = this.isNonEmptyObject(cachedIndex)
+          ? cachedIndex
+          : {};
+        this.applyStopLinesIndex();
+        this.status.show(
+          "Paradas cargadas desde cache local por fallo de red",
+          "info",
+        );
+      } else {
+        const cachedRaw = this.storage.loadStopsSnapshot(
+          this.config.storageStopsKey,
+        );
+        if (cachedRaw && Array.isArray(cachedRaw.features)) {
+          this.allStops = this.api.normalizeStopsGeoJson(cachedRaw);
+          const cachedIndex = this.storage.loadStopsSnapshot(
+            this.config.storageStopLinesIndexKey,
+          );
+          this.stopLinesIndex = this.isNonEmptyObject(cachedIndex)
+            ? cachedIndex
+            : {};
+          this.applyStopLinesIndex();
+          this.storage.saveStopsSnapshot(
+            this.config.storageStopsNormalizedKey,
+            this.allStops,
+          );
+          this.status.show("Paradas reconstruidas desde cache local", "info");
+        }
+      }
+    }
+
+    this.renderCurrentScreen();
+  }
+
+  setScreen(screen) {
+    if (screen !== "stops") {
+      this.expandedStopId = null;
+      this.destroyLeafletMap();
+    }
+
+    this.activeScreen = screen;
+
+    if (this.dom.menuView) {
+      this.dom.menuView.classList.toggle("hidden", screen !== "menu");
+    }
+    if (this.dom.linesView) {
+      this.dom.linesView.classList.toggle("hidden", screen !== "lines");
+    }
+    if (this.dom.stopsView) {
+      this.dom.stopsView.classList.toggle("hidden", screen !== "stops");
+    }
+
+    if (screen === "stops") {
+      this.stopsPage = 1;
+      this.renderStopLineFilterOptions();
+      this.updateStopLineFilterLabel();
+    }
+
+    this.renderCurrentScreen();
+  }
+
+  renderCurrentScreen() {
+    if (this.activeScreen === "lines") {
+      this.renderLinesScreen();
+      return;
+    }
+    if (this.activeScreen === "stops") {
+      this.renderStopsScreen();
+    }
+  }
+
+  renderLinesScreen() {
+    const search = this.dom.searchLine ? this.dom.searchLine.value : "";
+    this.view.renderLinesTable(this.lines, search, (lineId) => {
+      this.loadStopsForLine(lineId);
+    });
+  }
+
+  renderStopsScreen() {
+    this.ensureStopLinesIndex();
+
+    const stopName = this.dom.searchStopName
+      ? this.dom.searchStopName.value
+      : "";
+    const selectedLineIds = Array.from(this.selectedStopLineIds);
+    const pageMeta = this.view.renderStopsTable(
+      this.allStops,
+      stopName,
+      selectedLineIds,
+      this.stopsPage,
+      this.stopsPageSize,
+      this.expandedStopId,
+      (stop) => this.toggleStopMap(stop),
+    );
+    this.updateStopsPagination(pageMeta);
+    this.renderExpandedStopMap(pageMeta ? pageMeta.expandedMap : null);
+  }
+
+  toggleStopMap(stop) {
+    const stopId = stop && stop.id ? String(stop.id) : "";
+    if (!stopId) return;
+
+    if (String(this.expandedStopId || "") === stopId) {
+      this.expandedStopId = null;
+      this.destroyLeafletMap();
+      this.renderStopsScreen();
+      return;
+    }
+
+    this.expandedStopId = stopId;
+    this.renderStopsScreen();
+  }
+
+  renderExpandedStopMap(expandedMap) {
+    this.mapManager.render(expandedMap);
+  }
+
+  destroyLeafletMap() {
+    this.mapManager.destroy();
+  }
+
+  applyStopLinesIndex() {
+    if (!Array.isArray(this.allStops) || !this.allStops.length) return;
+    const index = this.stopLinesIndex || {};
+    this.allStops = this.allStops.map((stop) => {
+      const key = String(stop.id || "").trim();
+      const mappedLine = index[key];
+      return {
+        ...stop,
+        line:
+          mappedLine && String(mappedLine).trim() !== ""
+            ? String(mappedLine)
+            : stop.line || "-",
+      };
+    });
+  }
+
+  async ensureStopLinesIndex() {
+    if (this.buildingStopLinesIndex) return;
+    if (!this.lines.length || !this.allStops.length) return;
+
+    const hasAnyMappedLine = this.allStops.some(
+      (stop) => String(stop.line || "").trim() !== "-",
+    );
+    if (hasAnyMappedLine && Object.keys(this.stopLinesIndex || {}).length > 0) {
+      return;
+    }
+
+    const cachedIndex = this.storage.loadStopsSnapshot(
+      this.config.storageStopLinesIndexKey,
+    );
+    if (this.isNonEmptyObject(cachedIndex)) {
+      this.stopLinesIndex = cachedIndex;
+      this.applyStopLinesIndex();
+      return;
+    }
+
+    this.buildingStopLinesIndex = true;
+    this.status.show("Calculando líneas por parada...", "info");
+
+    try {
+      const stopLines = {};
+      const lineQueue = this.lines.map((line) => String(line.id));
+      const workerCount = Math.max(
+        1,
+        Math.min(this.config.stopLinesIndexConcurrency || 10, lineQueue.length),
+      );
+      let processed = 0;
+      let nextProgressAt = 20;
+      let lastRenderMs = 0;
+
+      const mergeLineEntries = (entries, fallbackLineId) => {
+        entries.forEach((entry) => {
+          const stopId = String(
+            entry && entry.stopId ? entry.stopId : "",
+          ).trim();
+          if (!stopId) return;
+
+          if (!stopLines[stopId]) {
+            stopLines[stopId] = new Set();
+          }
+
+          const lineIds = Array.isArray(entry && entry.lineIds)
+            ? entry.lineIds
+            : [];
+          if (lineIds.length) {
+            lineIds.forEach((lineId) => {
+              const clean = String(lineId || "").trim();
+              if (clean) stopLines[stopId].add(clean);
+            });
+            return;
+          }
+
+          stopLines[stopId].add(String(fallbackLineId));
+        });
+      };
+
+      const worker = async () => {
+        while (lineQueue.length) {
+          const lineId = lineQueue.shift();
+          if (!lineId) continue;
+
+          const entries = await this.fetchStopsForLineEntriesData(lineId);
+          mergeLineEntries(entries, lineId);
+          processed += 1;
+
+          if (processed >= nextProgressAt) {
+            this.status.show(
+              `Calculando líneas por parada... ${processed}/${this.lines.length}`,
+              "info",
+            );
+            nextProgressAt += 20;
+          }
+
+          const now = Date.now();
+          if (this.activeScreen === "stops" && now - lastRenderMs > 900) {
+            this.stopLinesIndex = this.flattenStopLinesIndex(stopLines);
+            this.applyStopLinesIndex();
+            this.renderStopsScreen();
+            lastRenderMs = now;
+          }
+        }
+      };
+
+      const workers = Array.from({ length: workerCount }, () => worker());
+      await Promise.all(workers);
+
+      const flatIndex = this.flattenStopLinesIndex(stopLines);
+      if (!this.isNonEmptyObject(flatIndex)) {
+        throw new Error("Indice vacio tras procesar lineas");
+      }
+
+      this.stopLinesIndex = flatIndex;
+      this.storage.saveStopsSnapshot(
+        this.config.storageStopLinesIndexKey,
+        flatIndex,
+      );
+      this.applyStopLinesIndex();
+      this.renderStopsScreen();
+      this.status.show("Líneas por parada calculadas", "ok");
+    } catch (error) {
+      console.error(
+        "No se pudo calcular el indice de lineas por parada",
+        error,
+      );
+      this.status.show(
+        "No se pudo calcular la línea de algunas paradas",
+        "err",
+      );
+    } finally {
+      this.buildingStopLinesIndex = false;
+    }
+  }
+
+  async fetchStopsForLineEntriesData(lineId) {
+    try {
+      return await this.api.fetchStopsForLineEntriesDirect(lineId);
+    } catch (directError) {
+      console.warn(
+        "Error en fetch directo de entradas de paradas para indice",
+        directError,
+      );
+      try {
+        return await this.api.fetchStopsForLineEntriesViaProxy(lineId);
+      } catch (proxyError) {
+        console.warn(
+          "Error en fetch proxy de entradas de paradas para indice",
+          proxyError,
+        );
+        return [];
+      }
+    }
+  }
+
+  flattenStopLinesIndex(stopLines) {
+    const flatIndex = {};
+    Object.keys(stopLines).forEach((stopId) => {
+      flatIndex[stopId] = Array.from(stopLines[stopId]).sort().join(", ");
+    });
+    return flatIndex;
+  }
+
+  isNonEmptyObject(value) {
+    return (
+      !!value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      Object.keys(value).length > 0
+    );
+  }
+
+  updateStopsPagination(pageMeta) {
+    const safeMeta = pageMeta || {
+      totalItems: 0,
+      totalPages: 1,
+      page: 1,
+      from: 0,
+      to: 0,
+    };
+    this.stopsPage = safeMeta.page;
+
+    if (this.dom.stopsPageInfo) {
+      if (!safeMeta.totalItems) {
+        this.dom.stopsPageInfo.textContent = "Sin resultados";
+      } else {
+        this.dom.stopsPageInfo.textContent = `Mostrando ${safeMeta.from}-${safeMeta.to} de ${safeMeta.totalItems} · Pagina ${safeMeta.page} de ${safeMeta.totalPages}`;
+      }
+    }
+
+    if (this.dom.stopsPrevPageBtn) {
+      const disabled = safeMeta.page <= 1;
+      this.dom.stopsPrevPageBtn.disabled = disabled;
+      this.dom.stopsPrevPageBtn.classList.toggle("opacity-40", disabled);
+      this.dom.stopsPrevPageBtn.classList.toggle(
+        "cursor-not-allowed",
+        disabled,
+      );
+    }
+
+    if (this.dom.stopsNextPageBtn) {
+      const disabled = safeMeta.page >= safeMeta.totalPages;
+      this.dom.stopsNextPageBtn.disabled = disabled;
+      this.dom.stopsNextPageBtn.classList.toggle("opacity-40", disabled);
+      this.dom.stopsNextPageBtn.classList.toggle(
+        "cursor-not-allowed",
+        disabled,
+      );
+    }
+  }
+
+  async loadStopsForLine(lineId) {
+    if (this.fetchingStops || !lineId) return;
+    this.fetchingStops = true;
+    this.status.show(`Cargando paradas para la línea ${lineId}...`);
+
+    let stops = [];
+    try {
+      stops = await this.api.fetchStopsForLineDirect(lineId);
+      this.status.show(
+        `Paradas cargadas desde servidor (${stops.length} entradas)`,
+        "ok",
+      );
+    } catch (directError) {
+      console.warn("Error cargando paradas directo", directError);
+      this.status.show(
+        "Fetch directo de paradas falló: intentando proxy...",
+        "info",
+      );
+      try {
+        stops = await this.api.fetchStopsForLineViaProxy(lineId);
+        this.status.show(
+          `Paradas cargadas vía proxy (${stops.length} entradas)`,
+          "ok",
+        );
+      } catch (proxyError) {
+        console.error("Error fetch paradas via proxy", proxyError);
+        this.status.show(
+          `No se pudieron cargar paradas para la línea ${lineId}`,
+          "err",
+        );
+        this.fetchingStops = false;
+        return;
+      }
+    }
+
+    const normalized = stops.map((item) => String(item).trim()).filter(Boolean);
+    const target = this.lines.find((line) => line.id === lineId);
+    if (target) {
+      target.stops = normalized;
+    }
+
+    this.storage.saveLines(this.lines, { silent: true });
+    this.renderLinesScreen();
+    this.fetchingStops = false;
+  }
+
+  getLinesSnapshot() {
+    return JSON.parse(JSON.stringify(this.lines));
+  }
+
+  createUid(prefix = "L") {
+    return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  colorFromString(value) {
+    let hash = 0;
+    for (let index = 0; index < value.length; index++) {
+      hash = (hash << 5) - hash + value.charCodeAt(index);
+    }
+    const colorNum = (hash >>> 0) % 0xffffff;
+    return `#${colorNum.toString(16).padStart(6, "0")}`;
+  }
+}
