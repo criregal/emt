@@ -12,7 +12,7 @@
 - `emt/emt.css`: visual styles and responsive layout.
 - `aa.json`: sample GeoJSON dataset used for local fallback/testing.
 
-## Non-Canonical / Cleanup Candidates
+## Non-Canonical / Cleanup Candidatess
 
 - `emt.html`: monolithic variant (inline CSS/JS).
 - `emt copy.html`: duplicate of monolithic variant.
