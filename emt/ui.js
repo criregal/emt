@@ -243,7 +243,7 @@ export class BusView {
           detailsCell.innerHTML = `
             <div class="mb-2 text-xs text-slate-300/80">Lat: ${lat.toFixed(6)} · Lon: ${lon.toFixed(6)}</div>
             <div id="${this.escapeHtml(routeSummaryId)}" class="mb-2 rounded-lg border border-white/15 bg-slate-900/35 px-3 py-2 text-xs text-slate-200">Ruta a pie: calcula la ruta para ver distancia y tiempos.</div>
-            <div id="${this.escapeHtml(mapContainerId)}" class="relative h-64 w-full overflow-auto rounded-xl border border-white/15" style="resize: vertical; min-height: 16rem; max-height: 80vh;"></div>
+            <div id="${this.escapeHtml(mapContainerId)}" class="relative w-full overflow-auto rounded-xl border border-white/15" style="height: 32rem; resize: vertical; min-height: 32rem; max-height: 80vh;"></div>
           `;
           expandedMap = {
             stop,

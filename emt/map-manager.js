@@ -62,9 +62,10 @@ export class LeafletMapManager {
     this.addTopMenuControl(map);
 
     this.addUserLocationMarker(map, {
-      fitToInclude: true,
-      focusOnUser: false,
+      fitToInclude: false,
+      focusOnUser: true,
       showStatusOnError: false,
+      drawRouteToStop: true,
     });
 
     this.currentMap = map;
@@ -314,7 +315,7 @@ export class LeafletMapManager {
 
         if (drawRouteToStop) {
           this.drawRouteToSelectedStop(map, {
-            fitBounds: true,
+            fitBounds: false,
             showStatusOnError,
           });
         }
