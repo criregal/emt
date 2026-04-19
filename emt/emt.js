@@ -584,9 +584,7 @@ class BusView {
     const { stopsTableBody } = this.dom;
     if (!stopsTableBody) return;
 
-    const safeStopName = String(stopNameQuery || "")
-      .trim()
-      .toLowerCase();
+    const safeStopName = this.normalizeSearchText(stopNameQuery);
     const selectedSet = new Set(
       Array.isArray(selectedLineIds)
         ? selectedLineIds
@@ -598,7 +596,7 @@ class BusView {
     const filtered = stops.filter((stop) => {
       const byName = !safeStopName
         ? true
-        : String(stop.name).toLowerCase().includes(safeStopName);
+        : this.normalizeSearchText(stop.name).includes(safeStopName);
       const stopLineValues = this.getStopLineValues(stop);
       const byLine =
         selectedSet.size === 0
@@ -650,11 +648,17 @@ class BusView {
   }
 
   getStopLineValues(stop) {
-    const candidates = [stop ? stop.line : null, stop ? stop.lineas : null, stop ? stop.lines : null];
+    const candidates = [
+      stop ? stop.line : null,
+      stop ? stop.lineas : null,
+      stop ? stop.lines : null,
+    ];
     const values = [];
 
     candidates.forEach((candidate) => {
-      this.extractLineValues(candidate).forEach((lineId) => values.push(lineId));
+      this.extractLineValues(candidate).forEach((lineId) =>
+        values.push(lineId),
+      );
     });
 
     return Array.from(new Set(values));
@@ -710,6 +714,14 @@ class BusView {
     }
 
     return text.toUpperCase();
+  }
+
+  normalizeSearchText(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
   }
 
   renderEmptyTableRow(tableBody, colSpan, message) {
