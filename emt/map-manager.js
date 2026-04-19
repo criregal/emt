@@ -350,16 +350,32 @@ export class LeafletMapManager {
         if (this.userMarker && map.hasLayer && map.hasLayer(this.userMarker)) {
           this.userMarker.setLatLng([userLat, userLon]);
         } else {
-          this.userMarker = window.L.circleMarker([userLat, userLon], {
-            radius: 7,
-            color: "#22d3ee",
-            weight: 2,
-            fillColor: "#0891b2",
-            fillOpacity: 0.9,
+          this.userMarker = window.L.marker([userLat, userLon], {
+            icon: this.createUserMarkerIcon(),
+            draggable: !this.realtimeLocationEnabled,
+            autoPan: true,
           })
             .addTo(map)
             .bindPopup("Tu ubicación actual");
+
+          this.userMarker.on("dragend", () => {
+            if (this.realtimeLocationEnabled) return;
+            if (!this.userMarker) return;
+
+            const markerPoint = this.userMarker.getLatLng();
+            if (!markerPoint) return;
+            this.userPoint = window.L.latLng(markerPoint.lat, markerPoint.lng);
+
+            if (this.currentMap && this.selectedStopPoint) {
+              this.drawRouteToSelectedStop(this.currentMap, {
+                fitBounds: true,
+                showStatusOnError: true,
+              });
+            }
+          });
         }
+
+        this.updateUserMarkerDraggableState();
 
         if (focusOnUser) {
           map.setView(this.userPoint, Math.max(map.getZoom(), 16));
@@ -397,11 +413,13 @@ export class LeafletMapManager {
 
     if (!this.realtimeLocationEnabled) {
       this.stopRealtimeLocationUpdates();
+      this.updateUserMarkerDraggableState();
       this.status.show("Ubicación en tiempo real desactivada", "info");
       return;
     }
 
     this.stopRealtimeLocationUpdates();
+    this.updateUserMarkerDraggableState();
     this.status.show("Ubicación en tiempo real activada", "ok");
 
     const tick = () => {
@@ -423,6 +441,26 @@ export class LeafletMapManager {
       clearInterval(this.realtimeLocationIntervalId);
       this.realtimeLocationIntervalId = null;
     }
+  }
+
+  createUserMarkerIcon() {
+    return window.L.divIcon({
+      className: "",
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+      html: '<span style="display:block;width:14px;height:14px;border-radius:999px;background:#0891b2;border:2px solid #22d3ee;"></span>',
+    });
+  }
+
+  updateUserMarkerDraggableState() {
+    if (!this.userMarker || !this.userMarker.dragging) return;
+
+    if (this.realtimeLocationEnabled) {
+      this.userMarker.dragging.disable();
+      return;
+    }
+
+    this.userMarker.dragging.enable();
   }
 
   openFullscreenMap() {
