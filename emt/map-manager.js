@@ -242,24 +242,22 @@ export class LeafletMapManager {
 
   addTopMenuControl(map) {
     const L = window.L;
-    const control = L.control({ position: "topleft" });
+    const control = L.control({ position: "topright" });
 
     control.onAdd = () => {
       const container = L.DomUtil.create(
         "div",
         "rounded-xl border border-white/20 bg-slate-900/85 shadow-lg backdrop-blur-sm",
       );
-      container.style.marginLeft = "36px";
-      container.style.marginTop = "-66px";
 
       const toggleBtn = document.createElement("button");
       toggleBtn.type = "button";
       toggleBtn.className =
-        "flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-bold text-slate-100";
-      toggleBtn.innerHTML = "<span>Menu</span><span data-chevron>▼</span>";
+        "flex w-full items-center justify-center px-2 py-1.5 text-base font-bold text-slate-100";
+      toggleBtn.innerHTML = "<span>☰</span>";
 
       const body = document.createElement("div");
-      body.className = "flex flex-col gap-1 px-2 pb-2 text-[11px]";
+      body.className = "hidden flex flex-col gap-1 px-2 pb-2 text-[11px]";
 
       body.innerHTML = `
           <button type="button" data-map-action="center-stop" class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-left font-semibold text-slate-100 hover:bg-white/20">Centrar parada</button>
@@ -277,9 +275,7 @@ export class LeafletMapManager {
       `;
 
       toggleBtn.addEventListener("click", () => {
-        const isHidden = body.classList.toggle("hidden");
-        const chevron = toggleBtn.querySelector("[data-chevron]");
-        if (chevron) chevron.textContent = isHidden ? "▶" : "▼";
+        body.classList.toggle("hidden");
       });
 
       container.appendChild(toggleBtn);
@@ -333,8 +329,6 @@ export class LeafletMapManager {
           this.toggleAerialOverlay(map, !!aerialSwitch.checked);
         });
       }
-
-      this.makeDraggable(container, map.getContainer(), toggleBtn);
 
       return container;
     };
