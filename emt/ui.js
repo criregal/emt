@@ -45,6 +45,8 @@ export class DomRefs {
     this.settingsRealtimeInterval = document.getElementById(
       "settingsRealtimeInterval",
     );
+    this.stopsFilterAll = document.getElementById("stopsFilterAll");
+    this.stopsFilterFavorites = document.getElementById("stopsFilterFavorites");
   }
 }
 
@@ -255,6 +257,8 @@ export class BusView {
     expandedStopId = null,
     onToggleStopMap = null,
     onOpenStopMapPage = null,
+    favoriteStopIds = new Set(),
+    onToggleFavorite = null,
   ) {
     const { stopsTableBody } = this.dom;
     if (!stopsTableBody) return;
@@ -290,7 +294,7 @@ export class BusView {
     if (!totalItems) {
       this.renderEmptyTableRow(
         stopsTableBody,
-        3,
+        4,
         "No hay paradas para los filtros aplicados",
       );
       return {
@@ -308,6 +312,7 @@ export class BusView {
     paginated.forEach((stop) => {
       const stopNameHtml = this.renderLineNameTwoLines(stop.name);
       const lineBadges = this.renderStopLineBadgesHtml(stop);
+      const isFav = favoriteStopIds.has(String(stop.id));
       const row = document.createElement("tr");
       row.className =
         "cursor-pointer hover:bg-white/10 focus-within:bg-white/10";
@@ -316,7 +321,16 @@ export class BusView {
         <td class="w-[4ch] max-w-[4ch] overflow-hidden text-ellipsis whitespace-nowrap px-1 py-3 font-semibold text-fuchsia-200">${this.escapeHtml(stop.id)}</td>
         <td class="w-[58%] px-4 py-3 text-slate-100">${stopNameHtml}</td>
         <td class="px-4 py-3">${lineBadges}</td>
+        <td class="w-10 px-1 py-3 text-center"><button type="button" class="fav-star text-lg leading-none transition ${isFav ? "text-amber-400" : "text-slate-600 hover:text-amber-300"}" data-stop-id="${this.escapeHtml(stop.id)}" aria-label="${isFav ? "Quitar de favoritos" : "Añadir a favoritos"}">${isFav ? "★" : "☆"}</button></td>
       `;
+
+      const favBtn = row.querySelector(".fav-star");
+      if (favBtn && typeof onToggleFavorite === "function") {
+        favBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onToggleFavorite(String(stop.id));
+        });
+      }
 
       const triggerToggle = () => {
         if (typeof onToggleStopMap === "function") {
@@ -339,7 +353,7 @@ export class BusView {
         detailsRow.className = "bg-slate-900/35";
 
         const detailsCell = document.createElement("td");
-        detailsCell.colSpan = 3;
+        detailsCell.colSpan = 4;
         detailsCell.className = "px-4 pb-4 pt-1";
 
         const lat = Number(stop.lat);

@@ -34,7 +34,10 @@ export class BusApp {
     this.stopMapTitleEl = null;
     this.stopMapContainerEl = null;
     this.realtimeIntervalSeconds = 5;
+    this.favoriteStopIds = new Set();
+    this.stopsFilterMode = "all";
     this.loadSettings();
+    this.loadFavoriteStops();
   }
 
   async init() {
@@ -206,6 +209,7 @@ export class BusApp {
     }
 
     this.updateSearchClearButtons();
+    this.bindStopsFilter();
     this.bindTabBar();
     this.bindSettings();
   }
@@ -568,12 +572,17 @@ export class BusApp {
   renderStopsScreen() {
     this.ensureStopLinesIndex();
 
+    const stops =
+      this.stopsFilterMode === "favorites"
+        ? this.allStops.filter((s) => this.favoriteStopIds.has(String(s.id)))
+        : this.allStops;
+
     const stopName = this.dom.searchStopName
       ? this.dom.searchStopName.value
       : "";
     const selectedLineIds = Array.from(this.selectedStopLineIds);
     const pageMeta = this.view.renderStopsTable(
-      this.allStops,
+      stops,
       stopName,
       selectedLineIds,
       this.stopsPage,
@@ -581,6 +590,8 @@ export class BusApp {
       this.expandedStopId,
       (stop) => this.toggleStopMap(stop),
       (stop) => this.openStopMapPage(stop),
+      this.favoriteStopIds,
+      (stopId) => this.toggleFavoriteStop(stopId),
     );
     this.updateStopsPagination(pageMeta);
     this.destroyLeafletMap();
@@ -689,6 +700,41 @@ export class BusApp {
     }
 
     document.body.classList.remove("overflow-hidden");
+  }
+
+  bindStopsFilter() {
+    if (this.dom.stopsFilterAll) {
+      this.dom.stopsFilterAll.addEventListener("click", () => {
+        this.stopsFilterMode = "all";
+        this.stopsPage = 1;
+        this.updateStopsFilterHighlight();
+        this.renderStopsScreen();
+      });
+    }
+    if (this.dom.stopsFilterFavorites) {
+      this.dom.stopsFilterFavorites.addEventListener("click", () => {
+        this.stopsFilterMode = "favorites";
+        this.stopsPage = 1;
+        this.updateStopsFilterHighlight();
+        this.renderStopsScreen();
+      });
+    }
+  }
+
+  updateStopsFilterHighlight() {
+    const allBtn = this.dom.stopsFilterAll;
+    const favBtn = this.dom.stopsFilterFavorites;
+    if (!allBtn || !favBtn) return;
+
+    const isFav = this.stopsFilterMode === "favorites";
+
+    allBtn.classList.toggle("text-white", !isFav);
+    allBtn.classList.toggle("bg-white/15", !isFav);
+    allBtn.classList.toggle("text-slate-400", isFav);
+
+    favBtn.classList.toggle("text-white", isFav);
+    favBtn.classList.toggle("bg-white/15", isFav);
+    favBtn.classList.toggle("text-slate-400", !isFav);
   }
 
   bindTabBar() {
@@ -813,6 +859,42 @@ export class BusApp {
     } catch (error) {
       console.warn("No se pudieron guardar ajustes", error);
     }
+  }
+
+  loadFavoriteStops() {
+    try {
+      const key =
+        this.config.storageFavoriteStopsKey || "emt_favorite_stops_v1";
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const ids = JSON.parse(raw);
+      if (Array.isArray(ids)) {
+        this.favoriteStopIds = new Set(ids.map(String));
+      }
+    } catch (error) {
+      console.warn("No se pudieron cargar favoritos", error);
+    }
+  }
+
+  saveFavoriteStops() {
+    try {
+      const key =
+        this.config.storageFavoriteStopsKey || "emt_favorite_stops_v1";
+      localStorage.setItem(key, JSON.stringify([...this.favoriteStopIds]));
+    } catch (error) {
+      console.warn("No se pudieron guardar favoritos", error);
+    }
+  }
+
+  toggleFavoriteStop(stopId) {
+    const id = String(stopId);
+    if (this.favoriteStopIds.has(id)) {
+      this.favoriteStopIds.delete(id);
+    } else {
+      this.favoriteStopIds.add(id);
+    }
+    this.saveFavoriteStops();
+    this.renderStopsScreen();
   }
 
   async renderExpandedStopArrivals(expandedMap) {

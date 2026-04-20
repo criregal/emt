@@ -20,4 +20,5 @@ export const APP_CONFIG = {
   proxyTimeoutMs: 12000,
   stopLinesIndexConcurrency: 10,
   storageSettingsKey: "emt_settings_v1",
+  storageFavoriteStopsKey: "emt_favorite_stops_v1",
 };
