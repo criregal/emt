@@ -721,7 +721,13 @@ export class BusApp {
 
   buildStopArrivalsView(arrivals) {
     const safeArrivals = Array.isArray(arrivals) ? arrivals.slice(0, 6) : [];
-    if (!safeArrivals.length) {
+    const visibleArrivals = safeArrivals.filter((item) => {
+      if (this.isServiceNoticeArrival(item)) return false;
+      if (this.isZeroMinuteNoticeArrival(item)) return false;
+      if (this.isNoticeArrival(item)) return false;
+      return true;
+    });
+    if (!visibleArrivals.length) {
       return {
         title: "Proximos buses",
         rows: [
@@ -734,11 +740,7 @@ export class BusApp {
       };
     }
 
-    const hasServiceNotice = safeArrivals.some((item) =>
-      this.isServiceNoticeArrival(item),
-    );
-
-    const rows = this.groupArrivalsByLine(safeArrivals);
+    const rows = this.groupArrivalsByLine(visibleArrivals);
     if (!rows.length) {
       return {
         title: "Proximos buses",
@@ -749,14 +751,6 @@ export class BusApp {
           },
         ],
         variant: "neutral",
-      };
-    }
-
-    if (hasServiceNotice) {
-      return {
-        title: "Aviso SAE",
-        rows,
-        variant: "warning",
       };
     }
 
@@ -774,6 +768,8 @@ export class BusApp {
       if (!arrival || typeof arrival !== "object") return;
 
       const lineId = String(arrival.lineId || "").trim();
+      if (!lineId) return;
+
       const destination = String(arrival.destination || "").trim();
       const timeLabel = String(arrival.timeLabel || "").trim();
       const minutes = Number(arrival.minutes);
@@ -781,8 +777,8 @@ export class BusApp {
         ? `${minutes} min`
         : timeLabel || "sin tiempo";
 
-      const key = lineId || "AVISO";
-      const rowLabel = lineId ? `L${lineId}` : "Aviso";
+      const key = lineId;
+      const rowLabel = `L${lineId}`;
 
       if (!grouped.has(key)) {
         grouped.set(key, {
@@ -811,7 +807,9 @@ export class BusApp {
     titleEl.textContent = String(arrivalsView.title || "Proximos buses");
     panel.appendChild(titleEl);
 
-    const rows = Array.isArray(arrivalsView.rows) ? arrivalsView.rows : [];
+    const rows = Array.isArray(arrivalsView.rows)
+      ? arrivalsView.rows.filter((row) => !this.isNoticeRow(row))
+      : [];
     if (!rows.length) {
       const emptyEl = document.createElement("div");
       emptyEl.textContent = "Sin datos";
@@ -844,6 +842,52 @@ export class BusApp {
     const label = String(arrival.timeLabel || "").trim();
 
     return !lineId && !Number.isFinite(minutes) && !!label;
+  }
+
+  isNoticeArrival(arrival) {
+    if (!arrival || typeof arrival !== "object") return false;
+
+    const lineId = String(arrival.lineId || "").trim();
+    const destination = String(arrival.destination || "").trim();
+    const label = String(arrival.timeLabel || "").trim();
+    const noticeText = `${lineId} ${destination} ${label}`.toLowerCase();
+    return this.hasNoticeKeyword(noticeText);
+  }
+
+  isNoticeRow(row) {
+    if (!row || typeof row !== "object") return false;
+    const label = String(row.label || "").trim().toLowerCase();
+    const value = String(row.value || "").trim().toLowerCase();
+    return this.hasNoticeKeyword(`${label} ${value}`);
+  }
+
+  isZeroMinuteNoticeArrival(arrival) {
+    if (!arrival || typeof arrival !== "object") return false;
+
+    const lineId = String(arrival.lineId || "").trim();
+    const destination = String(arrival.destination || "").trim();
+    const minutes = Number(arrival.minutes);
+    const label = String(arrival.timeLabel || "").trim();
+
+    if (!Number.isFinite(minutes) || minutes !== 0) return false;
+
+    const noticeText = `${lineId} ${destination} ${label}`.toLowerCase();
+
+    if (!lineId) return true;
+    return this.hasNoticeKeyword(noticeText);
+  }
+
+  hasNoticeKeyword(text) {
+    const safeText = String(text || "").toLowerCase();
+    const noticeKeywords = [
+      "aviso",
+      "incidenc",
+      "sin servicio",
+      "no disponible",
+      "error",
+      "fuera de servicio",
+    ];
+    return noticeKeywords.some((keyword) => safeText.includes(keyword));
   }
 
   applyStopArrivalsPanelState(panel, variant) {
