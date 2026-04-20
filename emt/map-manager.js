@@ -247,25 +247,43 @@ export class LeafletMapManager {
     control.onAdd = () => {
       const container = L.DomUtil.create(
         "div",
-        "rounded-xl border border-white/20 bg-slate-900/85 p-2 shadow-lg backdrop-blur-sm",
+        "rounded-xl border border-white/20 bg-slate-900/85 shadow-lg backdrop-blur-sm",
       );
-      container.innerHTML = `
-        <div class="flex flex-wrap gap-1 text-[11px]">
-          <button type="button" data-map-action="center-stop" class="rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100 hover:bg-white/20">Centrar parada</button>
-          <button type="button" data-map-action="fit-line" class="rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100 hover:bg-white/20">Ver todas</button>
-          <button type="button" data-map-action="center-user" class="rounded-md border border-white/20 bg-cyan-500/20 px-2 py-1 font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
-          <button type="button" data-map-action="route-user-stop" class="rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a pie</button>
-          <button type="button" data-map-action="fullscreen" class="rounded-md border border-emerald-300/30 bg-emerald-500/20 px-2 py-1 font-semibold text-emerald-100 hover:bg-emerald-500/30">Pantalla completa</button>
-          <label class="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
+      container.style.marginLeft = "36px";
+      container.style.marginTop = "-66px";
+
+      const toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className =
+        "flex w-full items-center justify-between px-2 py-1.5 text-[11px] font-bold text-slate-100";
+      toggleBtn.innerHTML = "<span>Menu</span><span data-chevron>▼</span>";
+
+      const body = document.createElement("div");
+      body.className = "flex flex-col gap-1 px-2 pb-2 text-[11px]";
+
+      body.innerHTML = `
+          <button type="button" data-map-action="center-stop" class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-left font-semibold text-slate-100 hover:bg-white/20">Centrar parada</button>
+          <button type="button" data-map-action="fit-line" class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-left font-semibold text-slate-100 hover:bg-white/20">Ver todas</button>
+          <button type="button" data-map-action="center-user" class="w-full rounded-md border border-cyan-300/30 bg-cyan-500/20 px-2 py-1 text-left font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
+          <button type="button" data-map-action="route-user-stop" class="w-full rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 text-left font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a pie</button>
+          <label class="inline-flex w-full items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
             <input type="checkbox" data-map-action="aerial-overlay" class="h-3.5 w-3.5 accent-emerald-400" />
             Foto aerea
           </label>
-            <label class="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
-              <input type="checkbox" data-map-action="realtime-location" class="h-3.5 w-3.5 accent-cyan-400" />
-              Tiempo real
-            </label>
-        </div>
+          <label class="inline-flex w-full items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
+            <input type="checkbox" data-map-action="realtime-location" class="h-3.5 w-3.5 accent-cyan-400" />
+            Tiempo real
+          </label>
       `;
+
+      toggleBtn.addEventListener("click", () => {
+        const isHidden = body.classList.toggle("hidden");
+        const chevron = toggleBtn.querySelector("[data-chevron]");
+        if (chevron) chevron.textContent = isHidden ? "▶" : "▼";
+      });
+
+      container.appendChild(toggleBtn);
+      container.appendChild(body);
 
       L.DomEvent.disableClickPropagation(container);
       L.DomEvent.disableScrollPropagation(container);
@@ -293,9 +311,6 @@ export class LeafletMapManager {
             });
             return;
           }
-          if (action === "fullscreen") {
-            this.openFullscreenMap();
-          }
         });
       });
 
@@ -318,6 +333,8 @@ export class LeafletMapManager {
           this.toggleAerialOverlay(map, !!aerialSwitch.checked);
         });
       }
+
+      this.makeDraggable(container, map.getContainer(), toggleBtn);
 
       return container;
     };
@@ -721,22 +738,19 @@ export class LeafletMapManager {
     const panel = document.getElementById(this.mapArrivalsPanelElementId);
     if (!panel) return;
 
+    const target = panel.querySelector("[data-panel-body]") || panel;
+
     const rows = Array.isArray(this.currentArrivalsRows)
       ? this.currentArrivalsRows
       : [];
 
-    panel.replaceChildren();
-
-    const title = document.createElement("div");
-    title.className = "mb-1 text-sm font-bold text-emerald-100";
-    title.textContent = "Llegadas";
-    panel.appendChild(title);
+    target.replaceChildren();
 
     if (!rows.length) {
       const empty = document.createElement("div");
       empty.className = "text-sm text-emerald-100/90";
       empty.textContent = "Estado: No disponibles";
-      panel.appendChild(empty);
+      target.appendChild(empty);
       return;
     }
 
@@ -774,7 +788,7 @@ export class LeafletMapManager {
         rowWrap.appendChild(line);
       });
 
-      panel.appendChild(rowWrap);
+      target.appendChild(rowWrap);
     });
   }
 
@@ -1009,41 +1023,173 @@ export class LeafletMapManager {
     if (this.mapRoutePanelElementId) {
       const mapPanel = document.getElementById(this.mapRoutePanelElementId);
       if (mapPanel) {
-        mapPanel.textContent = text;
+        const body = mapPanel.querySelector("[data-panel-body]");
+        if (body) {
+          body.textContent = text;
+        } else {
+          mapPanel.textContent = text;
+        }
       }
     }
+  }
+
+  ensureMapBottomWrapper(mapContainer) {
+    const wrapperId = "mapBottomPanelsWrapper";
+    let wrapper = mapContainer.querySelector(`#${wrapperId}`);
+    if (!wrapper) {
+      wrapper = document.createElement("div");
+      wrapper.id = wrapperId;
+      wrapper.className =
+        "pointer-events-auto absolute bottom-2 left-2 right-2 z-[450] flex flex-col gap-2 sm:flex-row";
+      mapContainer.appendChild(wrapper);
+    }
+    return wrapper;
+  }
+
+  makeDraggable(element, boundary, handle) {
+    const grip = handle || element;
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let origLeft = 0;
+    let origTop = 0;
+
+    const toAbsolute = () => {
+      if (element.style.position === "absolute") return;
+      const rect = element.getBoundingClientRect();
+      const parentRect = (
+        boundary ||
+        element.offsetParent ||
+        document.body
+      ).getBoundingClientRect();
+      element.style.position = "absolute";
+      element.style.left = `${rect.left - parentRect.left}px`;
+      element.style.top = `${rect.top - parentRect.top}px`;
+      element.style.right = "auto";
+      element.style.bottom = "auto";
+    };
+
+    const getPointer = (e) => {
+      if (e.touches && e.touches.length)
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      return { x: e.clientX, y: e.clientY };
+    };
+
+    const onStart = (e) => {
+      dragging = true;
+      toAbsolute();
+      const ptr = getPointer(e);
+      startX = ptr.x;
+      startY = ptr.y;
+      origLeft = parseInt(element.style.left, 10) || 0;
+      origTop = parseInt(element.style.top, 10) || 0;
+      grip.style.cursor = "grabbing";
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onMove = (e) => {
+      if (!dragging) return;
+      const ptr = getPointer(e);
+      element.style.left = `${origLeft + ptr.x - startX}px`;
+      element.style.top = `${origTop + ptr.y - startY}px`;
+    };
+
+    const onEnd = () => {
+      if (!dragging) return;
+      dragging = false;
+      grip.style.cursor = "grab";
+    };
+
+    grip.style.cursor = "grab";
+    grip.addEventListener("mousedown", onStart);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onEnd);
+    grip.addEventListener("touchstart", onStart, { passive: false });
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onEnd);
+  }
+
+  buildCollapsiblePanel(panelId, title, borderClass, textClass) {
+    const outer = document.createElement("div");
+    outer.id = panelId;
+    outer.className = `rounded-lg border ${borderClass} bg-slate-900/90 shadow-lg sm:flex-1 overflow-hidden`;
+    outer.style.resize = "vertical";
+    outer.style.minHeight = "32px";
+    outer.style.maxHeight = "50vh";
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = `flex w-full items-center justify-between px-3 py-1.5 text-xs font-bold ${textClass}`;
+    header.innerHTML = `<span>${title}</span><span data-chevron>▼</span>`;
+
+    const body = document.createElement("div");
+    body.className =
+      "px-3 pb-2 text-sm font-semibold leading-5 overflow-y-auto";
+    body.setAttribute("data-panel-body", "");
+
+    header.addEventListener("click", () => {
+      const isHidden = body.classList.toggle("hidden");
+      const chevron = header.querySelector("[data-chevron]");
+      if (chevron) chevron.textContent = isHidden ? "▶" : "▼";
+      if (isHidden) {
+        outer.style.resize = "none";
+        outer.style.height = "auto";
+      } else {
+        outer.style.resize = "vertical";
+      }
+    });
+
+    outer.appendChild(header);
+    outer.appendChild(body);
+    this.makeDraggable(outer, null, header);
+    return outer;
   }
 
   ensureMapRoutePanel(mapContainer, panelId) {
     if (!mapContainer || !panelId) return;
 
+    const wrapper = this.ensureMapBottomWrapper(mapContainer);
+
     let panel = document.getElementById(panelId);
     if (!panel) {
-      panel = document.createElement("div");
-      panel.id = panelId;
-      mapContainer.appendChild(panel);
+      panel = this.buildCollapsiblePanel(
+        panelId,
+        "Ruta",
+        "border-white/20",
+        "text-slate-100",
+      );
+      wrapper.appendChild(panel);
     }
 
-    panel.className =
-      "pointer-events-none absolute bottom-2 left-2 w-1/4 z-[450] rounded-lg border border-white/20 bg-slate-900/85 px-3 py-2 text-sm font-semibold leading-5 text-slate-100 shadow-lg";
-
-    panel.textContent = "Distancia: - · Tiempo ruta: - · Tiempo medio: -";
+    const body = panel.querySelector("[data-panel-body]");
+    if (body) {
+      body.className += " text-slate-100";
+      body.textContent = "Distancia: - · Tiempo ruta: - · Tiempo medio: -";
+    }
   }
 
   ensureMapArrivalsPanel(mapContainer, panelId) {
     if (!mapContainer || !panelId) return;
 
+    const wrapper = this.ensureMapBottomWrapper(mapContainer);
+
     let panel = document.getElementById(panelId);
     if (!panel) {
-      panel = document.createElement("div");
-      panel.id = panelId;
-      mapContainer.appendChild(panel);
+      panel = this.buildCollapsiblePanel(
+        panelId,
+        "Llegadas",
+        "border-emerald-300/35",
+        "text-emerald-100",
+      );
+      wrapper.appendChild(panel);
     }
 
-    panel.className =
-      "pointer-events-none absolute bottom-2 right-2 w-1/4 z-[450] rounded-lg border border-emerald-300/35 bg-slate-900/90 px-3 py-2 text-sm font-semibold leading-5 text-emerald-100 shadow-lg whitespace-pre-line";
-
-    panel.textContent = "Llegadas\nEstado: consultando...";
+    const body = panel.querySelector("[data-panel-body]");
+    if (body) {
+      body.className += " text-emerald-100 whitespace-pre-line";
+      body.textContent = "Estado: consultando...";
+    }
   }
 
   clearRouteLayer(map) {

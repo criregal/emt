@@ -856,8 +856,12 @@ export class BusApp {
 
   isNoticeRow(row) {
     if (!row || typeof row !== "object") return false;
-    const label = String(row.label || "").trim().toLowerCase();
-    const value = String(row.value || "").trim().toLowerCase();
+    const label = String(row.label || "")
+      .trim()
+      .toLowerCase();
+    const value = String(row.value || "")
+      .trim()
+      .toLowerCase();
     return this.hasNoticeKeyword(`${label} ${value}`);
   }
 
