@@ -1292,7 +1292,15 @@ export class LeafletMapManager {
     this.userMarker = null;
 
     this.topMenuControl = null;
+    if (this.bottomToolbar && this.bottomToolbar.parentElement) {
+      this.bottomToolbar.remove();
+    }
     this.bottomToolbar = null;
+    if (this.menuDialogContainer) {
+      const overlay =
+        this.menuDialogContainer.parentElement || this.menuDialogContainer;
+      overlay.querySelectorAll("[id^='mapDialog-']").forEach((d) => d.remove());
+    }
     this.menuDialogMap = null;
     this.menuDialogContainer = null;
     this.userPoint = null;
