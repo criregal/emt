@@ -112,7 +112,7 @@ export class LeafletMapManager {
     }
 
     this.addLineStopsMarkers(map, expandedMap);
-    this.addTopMenuControl(map);
+    this.addBottomToolbar(map, mapContainer);
 
     // En iOS Safari es mas fiable solicitar ubicacion tras accion explicita.
     if (!this.isIOSDevice()) {
@@ -124,8 +124,7 @@ export class LeafletMapManager {
       });
     }
 
-    this.ensureMapRoutePanel(mapContainer, this.mapRoutePanelElementId);
-    this.ensureMapArrivalsPanel(mapContainer, this.mapArrivalsPanelElementId);
+    this.ensureInfoDialogSections(mapContainer);
     this.updateRoutePanels(this.lastRouteMetrics);
     this.updateArrivalsPanel();
     this.loadStopArrivalsForCurrentTarget();
@@ -240,101 +239,178 @@ export class LeafletMapManager {
     }
   }
 
-  addTopMenuControl(map) {
-    const L = window.L;
-    const control = L.control({ position: "topright" });
+  addBottomToolbar(map, mapContainer) {
+    const toolbar = document.createElement("div");
+    toolbar.id = "mapBottomToolbar";
+    toolbar.className =
+      "absolute bottom-0 left-0 right-0 z-[500] flex items-end justify-around border-t border-white/15 bg-slate-900/80 px-2 pb-[env(safe-area-inset-bottom,4px)] pt-1.5 backdrop-blur-xl";
 
-    control.onAdd = () => {
-      const container = L.DomUtil.create(
-        "div",
-        "rounded-xl border border-white/20 bg-slate-900/85 shadow-lg backdrop-blur-sm",
-      );
-
-      const toggleBtn = document.createElement("button");
-      toggleBtn.type = "button";
-      toggleBtn.className =
-        "flex w-full items-center justify-center px-2 py-1.5 text-base font-bold text-slate-100";
-      toggleBtn.innerHTML = "<span>☰</span>";
-
-      const body = document.createElement("div");
-      body.className = "hidden flex flex-col gap-1 px-2 pb-2 text-[11px]";
-
-      body.innerHTML = `
-          <button type="button" data-map-action="center-stop" class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-left font-semibold text-slate-100 hover:bg-white/20">Centrar parada</button>
-          <button type="button" data-map-action="fit-line" class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-left font-semibold text-slate-100 hover:bg-white/20">Ver todas</button>
-          <button type="button" data-map-action="center-user" class="w-full rounded-md border border-cyan-300/30 bg-cyan-500/20 px-2 py-1 text-left font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
-          <button type="button" data-map-action="route-user-stop" class="w-full rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 text-left font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a pie</button>
-          <label class="inline-flex w-full items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
-            <input type="checkbox" data-map-action="aerial-overlay" class="h-3.5 w-3.5 accent-emerald-400" />
-            Foto aerea
-          </label>
-          <label class="inline-flex w-full items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
-            <input type="checkbox" data-map-action="realtime-location" class="h-3.5 w-3.5 accent-cyan-400" />
-            Tiempo real
-          </label>
-      `;
-
-      toggleBtn.addEventListener("click", () => {
-        body.classList.toggle("hidden");
-      });
-
-      container.appendChild(toggleBtn);
-      container.appendChild(body);
-
-      L.DomEvent.disableClickPropagation(container);
-      L.DomEvent.disableScrollPropagation(container);
-
-      const buttons = container.querySelectorAll("button[data-map-action]");
-      buttons.forEach((button) => {
-        button.addEventListener("click", () => {
-          const action = button.getAttribute("data-map-action");
-          if (action === "center-stop") {
-            this.centerOnSelectedStop(map);
-            return;
-          }
-          if (action === "fit-line") {
-            this.fitAllLineStops(map);
-            return;
-          }
-          if (action === "center-user") {
-            this.centerOnUserLocation(map);
-            return;
-          }
-          if (action === "route-user-stop") {
-            this.drawRouteToSelectedStop(map, {
-              fitBounds: true,
-              showStatusOnError: true,
-            });
-            return;
-          }
-        });
-      });
-
-      const realtimeSwitch = container.querySelector(
-        'input[data-map-action="realtime-location"]',
-      );
-      if (realtimeSwitch) {
-        realtimeSwitch.checked = !!this.realtimeLocationEnabled;
-        realtimeSwitch.addEventListener("change", () => {
-          this.toggleRealtimeLocation(map, !!realtimeSwitch.checked);
-        });
-      }
-
-      const aerialSwitch = container.querySelector(
-        'input[data-map-action="aerial-overlay"]',
-      );
-      if (aerialSwitch) {
-        aerialSwitch.checked = !!this.aerialOverlayEnabled;
-        aerialSwitch.addEventListener("change", () => {
-          this.toggleAerialOverlay(map, !!aerialSwitch.checked);
-        });
-      }
-
-      return container;
+    const makeTbBtn = (emoji, label, onClick) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className =
+        "flex flex-col items-center gap-0.5 rounded-lg px-4 py-1 text-slate-400 active:text-white";
+      const icon = document.createElement("span");
+      icon.className = "text-xl leading-none";
+      icon.textContent = emoji;
+      const text = document.createElement("span");
+      text.className = "text-[10px] font-medium leading-none";
+      text.textContent = label;
+      btn.appendChild(icon);
+      btn.appendChild(text);
+      btn.addEventListener("click", onClick);
+      return btn;
     };
 
-    control.addTo(map);
-    this.topMenuControl = control;
+    const infoBtn = makeTbBtn("ℹ️", "Info", () =>
+      this.toggleDialog("info", mapContainer),
+    );
+    const menuBtn = makeTbBtn("☰", "Menu", () =>
+      this.toggleDialog("menu", mapContainer),
+    );
+
+    toolbar.appendChild(infoBtn);
+    toolbar.appendChild(menuBtn);
+
+    toolbar.addEventListener("mousedown", (e) => e.stopPropagation());
+    toolbar.addEventListener("touchstart", (e) => e.stopPropagation(), {
+      passive: false,
+    });
+
+    mapContainer.appendChild(toolbar);
+    this.bottomToolbar = toolbar;
+
+    this.buildMenuDialogContent(map, mapContainer);
+  }
+
+  buildMenuDialogContent(map, mapContainer) {
+    this.menuDialogMap = map;
+    this.menuDialogContainer = mapContainer;
+  }
+
+  toggleDialog(type, mapContainer) {
+    const dialogId = `mapDialog-${type}`;
+    let dialog = mapContainer.querySelector(`#${dialogId}`);
+
+    if (dialog) {
+      dialog.remove();
+      return;
+    }
+
+    const otherType = type === "info" ? "menu" : "info";
+    const otherDialog = mapContainer.querySelector(`#mapDialog-${otherType}`);
+    if (otherDialog) otherDialog.remove();
+
+    dialog = document.createElement("div");
+    dialog.id = dialogId;
+    dialog.className =
+      "absolute inset-x-3 bottom-16 z-[510] max-h-[55vh] overflow-y-auto rounded-2xl border border-white/15 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl";
+
+    dialog.addEventListener("mousedown", (e) => e.stopPropagation());
+    dialog.addEventListener("touchstart", (e) => e.stopPropagation(), {
+      passive: false,
+    });
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className =
+      "absolute right-2 top-2 rounded-full bg-white/10 px-2 py-0.5 text-sm text-slate-300 hover:bg-white/20";
+    closeBtn.textContent = "✕";
+    closeBtn.addEventListener("click", () => dialog.remove());
+    dialog.appendChild(closeBtn);
+
+    if (type === "info") {
+      this.fillInfoDialog(dialog);
+    } else {
+      this.fillMenuDialog(dialog);
+    }
+
+    mapContainer.appendChild(dialog);
+  }
+
+  fillInfoDialog(dialog) {
+    const title = document.createElement("div");
+    title.className = "mb-3 text-xs font-bold text-slate-100";
+    title.textContent = "Info de parada";
+    dialog.appendChild(title);
+
+    const routeSection = document.createElement("div");
+    routeSection.setAttribute("data-route-section", "");
+    routeSection.className =
+      "mb-3 border-b border-white/10 pb-3 text-sm font-semibold text-slate-100";
+    routeSection.textContent = this.buildRoutePanelText(this.lastRouteMetrics);
+    dialog.appendChild(routeSection);
+
+    const arrivalsSection = document.createElement("div");
+    arrivalsSection.setAttribute("data-arrivals-section", "");
+    arrivalsSection.className = "text-sm font-semibold text-emerald-100";
+    dialog.appendChild(arrivalsSection);
+
+    this.renderArrivalsInto(arrivalsSection);
+  }
+
+  fillMenuDialog(dialog) {
+    const title = document.createElement("div");
+    title.className = "mb-3 text-xs font-bold text-slate-100";
+    title.textContent = "Menu";
+    dialog.appendChild(title);
+
+    const map = this.menuDialogMap;
+    const mapContainer = this.menuDialogContainer;
+    const body = document.createElement("div");
+    body.className = "flex flex-col gap-1.5 text-[11px]";
+
+    body.innerHTML = `
+      <button type="button" data-map-action="center-stop" class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-left font-semibold text-slate-100 hover:bg-white/20">Centrar parada</button>
+      <button type="button" data-map-action="fit-line" class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-left font-semibold text-slate-100 hover:bg-white/20">Ver todas</button>
+      <button type="button" data-map-action="center-user" class="w-full rounded-md border border-cyan-300/30 bg-cyan-500/20 px-2 py-1 text-left font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
+      <button type="button" data-map-action="route-user-stop" class="w-full rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 text-left font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a pie</button>
+      <label class="inline-flex w-full items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
+        <input type="checkbox" data-map-action="aerial-overlay" class="h-3.5 w-3.5 accent-emerald-400" />
+        Foto aerea
+      </label>
+      <label class="inline-flex w-full items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
+        <input type="checkbox" data-map-action="realtime-location" class="h-3.5 w-3.5 accent-cyan-400" />
+        Tiempo real
+      </label>
+    `;
+
+    dialog.appendChild(body);
+
+    body.querySelectorAll("button[data-map-action]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const action = btn.getAttribute("data-map-action");
+        if (action === "center-stop") this.centerOnSelectedStop(map);
+        if (action === "fit-line") this.fitAllLineStops(map);
+        if (action === "center-user") this.centerOnUserLocation(map);
+        if (action === "route-user-stop")
+          this.drawRouteToSelectedStop(map, {
+            fitBounds: true,
+            showStatusOnError: true,
+          });
+        dialog.remove();
+      });
+    });
+
+    const realtimeSwitch = body.querySelector(
+      'input[data-map-action="realtime-location"]',
+    );
+    if (realtimeSwitch) {
+      realtimeSwitch.checked = !!this.realtimeLocationEnabled;
+      realtimeSwitch.addEventListener("change", () => {
+        this.toggleRealtimeLocation(map, !!realtimeSwitch.checked);
+      });
+    }
+
+    const aerialSwitch = body.querySelector(
+      'input[data-map-action="aerial-overlay"]',
+    );
+    if (aerialSwitch) {
+      aerialSwitch.checked = !!this.aerialOverlayEnabled;
+      aerialSwitch.addEventListener("change", () => {
+        this.toggleAerialOverlay(map, !!aerialSwitch.checked);
+      });
+    }
   }
 
   centerOnSelectedStop(map) {
@@ -726,13 +802,8 @@ export class LeafletMapManager {
     return `${base}-arrivals`;
   }
 
-  updateArrivalsPanel() {
-    if (!this.mapArrivalsPanelElementId) return;
-
-    const panel = document.getElementById(this.mapArrivalsPanelElementId);
-    if (!panel) return;
-
-    const target = panel.querySelector("[data-panel-body]") || panel;
+  renderArrivalsInto(target) {
+    if (!target) return;
 
     const rows = Array.isArray(this.currentArrivalsRows)
       ? this.currentArrivalsRows
@@ -1014,176 +1085,28 @@ export class LeafletMapManager {
       }
     }
 
-    if (this.mapRoutePanelElementId) {
-      const mapPanel = document.getElementById(this.mapRoutePanelElementId);
-      if (mapPanel) {
-        const body = mapPanel.querySelector("[data-panel-body]");
-        if (body) {
-          body.textContent = text;
-        } else {
-          mapPanel.textContent = text;
-        }
+    if (this.mapContainerElement) {
+      const section = this.mapContainerElement.querySelector(
+        "[data-route-section]",
+      );
+      if (section) {
+        section.textContent = text;
       }
     }
   }
 
-  ensureMapBottomWrapper(mapContainer) {
-    const wrapperId = "mapBottomPanelsWrapper";
-    let wrapper = mapContainer.querySelector(`#${wrapperId}`);
-    if (!wrapper) {
-      wrapper = document.createElement("div");
-      wrapper.id = wrapperId;
-      wrapper.className =
-        "pointer-events-auto absolute bottom-2 left-2 right-2 z-[450] flex flex-col gap-2 sm:flex-row";
-      mapContainer.appendChild(wrapper);
-    }
-    return wrapper;
+  updateArrivalsPanel() {
+    if (!this.mapContainerElement) return;
+    const target = this.mapContainerElement.querySelector(
+      "[data-arrivals-section]",
+    );
+    if (!target) return;
+    this.renderArrivalsInto(target);
   }
 
-  makeDraggable(element, boundary, handle) {
-    const grip = handle || element;
-    let dragging = false;
-    let startX = 0;
-    let startY = 0;
-    let origLeft = 0;
-    let origTop = 0;
-
-    const toAbsolute = () => {
-      if (element.style.position === "absolute") return;
-      const rect = element.getBoundingClientRect();
-      const parentRect = (
-        boundary ||
-        element.offsetParent ||
-        document.body
-      ).getBoundingClientRect();
-      element.style.position = "absolute";
-      element.style.left = `${rect.left - parentRect.left}px`;
-      element.style.top = `${rect.top - parentRect.top}px`;
-      element.style.right = "auto";
-      element.style.bottom = "auto";
-    };
-
-    const getPointer = (e) => {
-      if (e.touches && e.touches.length)
-        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      return { x: e.clientX, y: e.clientY };
-    };
-
-    const onStart = (e) => {
-      dragging = true;
-      toAbsolute();
-      const ptr = getPointer(e);
-      startX = ptr.x;
-      startY = ptr.y;
-      origLeft = parseInt(element.style.left, 10) || 0;
-      origTop = parseInt(element.style.top, 10) || 0;
-      grip.style.cursor = "grabbing";
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const onMove = (e) => {
-      if (!dragging) return;
-      const ptr = getPointer(e);
-      element.style.left = `${origLeft + ptr.x - startX}px`;
-      element.style.top = `${origTop + ptr.y - startY}px`;
-    };
-
-    const onEnd = () => {
-      if (!dragging) return;
-      dragging = false;
-      grip.style.cursor = "grab";
-    };
-
-    grip.style.cursor = "grab";
-    grip.addEventListener("mousedown", onStart);
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onEnd);
-    grip.addEventListener("touchstart", onStart, { passive: false });
-    document.addEventListener("touchmove", onMove, { passive: false });
-    document.addEventListener("touchend", onEnd);
-  }
-
-  buildCollapsiblePanel(panelId, title, borderClass, textClass) {
-    const outer = document.createElement("div");
-    outer.id = panelId;
-    outer.className = `rounded-lg border ${borderClass} bg-slate-900/90 shadow-lg sm:flex-1 overflow-hidden`;
-    outer.style.resize = "vertical";
-    outer.style.minHeight = "32px";
-    outer.style.maxHeight = "50vh";
-
-    const header = document.createElement("button");
-    header.type = "button";
-    header.className = `flex w-full items-center justify-between px-3 py-1.5 text-xs font-bold ${textClass}`;
-    header.innerHTML = `<span>${title}</span><span data-chevron>▼</span>`;
-
-    const body = document.createElement("div");
-    body.className =
-      "px-3 pb-2 text-sm font-semibold leading-5 overflow-y-auto";
-    body.setAttribute("data-panel-body", "");
-
-    header.addEventListener("click", () => {
-      const isHidden = body.classList.toggle("hidden");
-      const chevron = header.querySelector("[data-chevron]");
-      if (chevron) chevron.textContent = isHidden ? "▶" : "▼";
-      if (isHidden) {
-        outer.style.resize = "none";
-        outer.style.height = "auto";
-      } else {
-        outer.style.resize = "vertical";
-      }
-    });
-
-    outer.appendChild(header);
-    outer.appendChild(body);
-    this.makeDraggable(outer, null, header);
-    return outer;
-  }
-
-  ensureMapRoutePanel(mapContainer, panelId) {
-    if (!mapContainer || !panelId) return;
-
-    const wrapper = this.ensureMapBottomWrapper(mapContainer);
-
-    let panel = document.getElementById(panelId);
-    if (!panel) {
-      panel = this.buildCollapsiblePanel(
-        panelId,
-        "Ruta",
-        "border-white/20",
-        "text-slate-100",
-      );
-      wrapper.appendChild(panel);
-    }
-
-    const body = panel.querySelector("[data-panel-body]");
-    if (body) {
-      body.className += " text-slate-100";
-      body.textContent = "Distancia: - · Tiempo ruta: - · Tiempo medio: -";
-    }
-  }
-
-  ensureMapArrivalsPanel(mapContainer, panelId) {
-    if (!mapContainer || !panelId) return;
-
-    const wrapper = this.ensureMapBottomWrapper(mapContainer);
-
-    let panel = document.getElementById(panelId);
-    if (!panel) {
-      panel = this.buildCollapsiblePanel(
-        panelId,
-        "Llegadas",
-        "border-emerald-300/35",
-        "text-emerald-100",
-      );
-      wrapper.appendChild(panel);
-    }
-
-    const body = panel.querySelector("[data-panel-body]");
-    if (body) {
-      body.className += " text-emerald-100 whitespace-pre-line";
-      body.textContent = "Estado: consultando...";
-    }
+  ensureInfoDialogSections(mapContainer) {
+    // Sections are created on demand when the info dialog opens.
+    // This method exists for compatibility with the render flow.
   }
 
   clearRouteLayer(map) {
@@ -1363,6 +1286,9 @@ export class LeafletMapManager {
     this.userMarker = null;
 
     this.topMenuControl = null;
+    this.bottomToolbar = null;
+    this.menuDialogMap = null;
+    this.menuDialogContainer = null;
     this.userPoint = null;
     this.selectedStopPoint = null;
     this.lineBounds = null;
