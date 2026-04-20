@@ -19,4 +19,5 @@ export const APP_CONFIG = {
   arrivalsRequestTimeoutMs: 9000,
   proxyTimeoutMs: 12000,
   stopLinesIndexConcurrency: 10,
+  storageSettingsKey: "emt_settings_v1",
 };

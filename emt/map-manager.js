@@ -24,6 +24,7 @@ export class LeafletMapManager {
     this.userMarker = null;
     this.realtimeLocationEnabled = false;
     this.realtimeLocationIntervalId = null;
+    this.realtimeIntervalMs = 5000;
     this.aerialOverlayEnabled = false;
     this.aerialOverlayLayer = null;
     this.arrivalsRequestToken = 0;
@@ -243,7 +244,7 @@ export class LeafletMapManager {
     const toolbar = document.createElement("div");
     toolbar.id = "mapBottomToolbar";
     toolbar.className =
-      "absolute bottom-0 left-0 right-0 z-[500] flex items-end justify-around border-t border-white/15 bg-slate-900/80 px-2 pb-[env(safe-area-inset-bottom,4px)] pt-1.5 backdrop-blur-xl";
+      "flex shrink-0 items-end justify-around border-t border-white/15 bg-slate-900/95 px-2 pb-[env(safe-area-inset-bottom,4px)] pt-1.5";
 
     const makeTbBtn = (emoji, label, onClick) => {
       const btn = document.createElement("button");
@@ -277,7 +278,8 @@ export class LeafletMapManager {
       passive: false,
     });
 
-    mapContainer.appendChild(toolbar);
+    const overlayEl = mapContainer.parentElement || mapContainer;
+    overlayEl.appendChild(toolbar);
     this.bottomToolbar = toolbar;
 
     this.buildMenuDialogContent(map, mapContainer);
@@ -289,8 +291,9 @@ export class LeafletMapManager {
   }
 
   toggleDialog(type, mapContainer) {
+    const overlayEl = mapContainer.parentElement || mapContainer;
     const dialogId = `mapDialog-${type}`;
-    let dialog = mapContainer.querySelector(`#${dialogId}`);
+    let dialog = overlayEl.querySelector(`#${dialogId}`);
 
     if (dialog) {
       dialog.remove();
@@ -298,13 +301,13 @@ export class LeafletMapManager {
     }
 
     const otherType = type === "info" ? "menu" : "info";
-    const otherDialog = mapContainer.querySelector(`#mapDialog-${otherType}`);
+    const otherDialog = overlayEl.querySelector(`#mapDialog-${otherType}`);
     if (otherDialog) otherDialog.remove();
 
     dialog = document.createElement("div");
     dialog.id = dialogId;
     dialog.className =
-      "absolute inset-x-3 bottom-16 z-[510] max-h-[55vh] overflow-y-auto rounded-2xl border border-white/15 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl";
+      "absolute inset-x-3 bottom-14 z-[510] max-h-[50vh] overflow-y-auto rounded-2xl border border-white/15 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-xl";
 
     dialog.addEventListener("mousedown", (e) => e.stopPropagation());
     dialog.addEventListener("touchstart", (e) => e.stopPropagation(), {
@@ -325,7 +328,7 @@ export class LeafletMapManager {
       this.fillMenuDialog(dialog);
     }
 
-    mapContainer.appendChild(dialog);
+    overlayEl.appendChild(dialog);
   }
 
   fillInfoDialog(dialog) {
@@ -623,7 +626,10 @@ export class LeafletMapManager {
     };
 
     tick();
-    this.realtimeLocationIntervalId = window.setInterval(tick, 5000);
+    this.realtimeLocationIntervalId = window.setInterval(
+      tick,
+      this.realtimeIntervalMs || 5000,
+    );
   }
 
   stopRealtimeLocationUpdates() {

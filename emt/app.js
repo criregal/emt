@@ -33,6 +33,8 @@ export class BusApp {
     this.stopMapOverlayEl = null;
     this.stopMapTitleEl = null;
     this.stopMapContainerEl = null;
+    this.realtimeIntervalSeconds = 5;
+    this.loadSettings();
   }
 
   async init() {
@@ -204,6 +206,8 @@ export class BusApp {
     }
 
     this.updateSearchClearButtons();
+    this.bindTabBar();
+    this.bindSettings();
   }
 
   updateSearchClearButtons() {
@@ -471,6 +475,7 @@ export class BusApp {
 
   setScreen(screen) {
     this.closeStopMapPage();
+    this.closeSettingsOverlay();
 
     if (screen !== "lines") {
       this.expandedLineId = null;
@@ -492,6 +497,8 @@ export class BusApp {
     if (this.dom.stopsView) {
       this.dom.stopsView.classList.toggle("hidden", screen !== "stops");
     }
+
+    this.updateTabBarHighlight(screen);
 
     if (screen === "stops") {
       this.stopsPage = 1;
@@ -633,17 +640,18 @@ export class BusApp {
     if (this.stopMapOverlayEl) return;
 
     const overlay = document.createElement("div");
-    overlay.className = "fixed inset-0 z-[1200] hidden bg-slate-950";
+    overlay.className =
+      "fixed inset-0 z-[1200] hidden flex flex-col bg-slate-950";
 
     const topBar = document.createElement("div");
     topBar.className =
-      "flex h-14 items-center gap-3 border-b border-white/20 bg-slate-900/95 px-3 text-slate-100";
+      "flex h-12 shrink-0 items-center gap-3 border-b border-white/20 bg-slate-900/95 px-3 text-slate-100";
 
     const backBtn = document.createElement("button");
     backBtn.type = "button";
     backBtn.className =
-      "rounded-xl border border-white/25 bg-white/10 px-3 py-1.5 text-sm font-semibold text-slate-100 transition hover:bg-white/15";
-    backBtn.textContent = "‹ Atras";
+      "flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-lg text-slate-100 transition hover:bg-white/15";
+    backBtn.textContent = "‹";
     backBtn.addEventListener("click", () => this.closeStopMapPage());
 
     const title = document.createElement("div");
@@ -655,7 +663,7 @@ export class BusApp {
 
     const mapContainer = document.createElement("div");
     mapContainer.id = "stopMapLeafletContainer";
-    mapContainer.className = "h-[calc(100%-56px)] w-full";
+    mapContainer.className = "relative min-h-0 flex-1";
 
     overlay.appendChild(topBar);
     overlay.appendChild(mapContainer);
@@ -674,6 +682,130 @@ export class BusApp {
     }
 
     document.body.classList.remove("overflow-hidden");
+  }
+
+  bindTabBar() {
+    if (this.dom.tabHome) {
+      this.dom.tabHome.addEventListener("click", () => this.setScreen("menu"));
+    }
+    if (this.dom.tabLines) {
+      this.dom.tabLines.addEventListener("click", () =>
+        this.setScreen("lines"),
+      );
+    }
+    if (this.dom.tabStops) {
+      this.dom.tabStops.addEventListener("click", () =>
+        this.setScreen("stops"),
+      );
+    }
+    if (this.dom.tabSettings) {
+      this.dom.tabSettings.addEventListener("click", () =>
+        this.openSettingsOverlay(),
+      );
+    }
+  }
+
+  updateTabBarHighlight(screen) {
+    const tabs = {
+      menu: this.dom.tabHome,
+      lines: this.dom.tabLines,
+      stops: this.dom.tabStops,
+    };
+    Object.entries(tabs).forEach(([key, btn]) => {
+      if (!btn) return;
+      if (key === screen) {
+        btn.classList.remove("text-slate-400");
+        btn.classList.add("text-white");
+      } else {
+        btn.classList.remove("text-white");
+        btn.classList.add("text-slate-400");
+      }
+    });
+    if (this.dom.tabSettings) {
+      this.dom.tabSettings.classList.remove("text-white");
+      this.dom.tabSettings.classList.add("text-slate-400");
+    }
+  }
+
+  bindSettings() {
+    if (this.dom.settingsBackBtn) {
+      this.dom.settingsBackBtn.addEventListener("click", () =>
+        this.closeSettingsOverlay(),
+      );
+    }
+    if (this.dom.settingsRealtimeInterval) {
+      this.dom.settingsRealtimeInterval.value = String(
+        this.realtimeIntervalSeconds,
+      );
+      this.dom.settingsRealtimeInterval.addEventListener("change", () => {
+        const val = parseInt(this.dom.settingsRealtimeInterval.value, 10);
+        if (Number.isFinite(val) && val >= 1 && val <= 60) {
+          this.realtimeIntervalSeconds = val;
+          this.saveSettings();
+          this.mapManager.realtimeIntervalMs = val * 1000;
+        }
+      });
+    }
+  }
+
+  openSettingsOverlay() {
+    if (!this.dom.settingsOverlay) return;
+    this.dom.settingsOverlay.classList.remove("hidden");
+    this.dom.settingsOverlay.classList.add("flex");
+    if (this.dom.settingsRealtimeInterval) {
+      this.dom.settingsRealtimeInterval.value = String(
+        this.realtimeIntervalSeconds,
+      );
+    }
+    if (this.dom.tabSettings) {
+      this.dom.tabSettings.classList.remove("text-slate-400");
+      this.dom.tabSettings.classList.add("text-white");
+    }
+  }
+
+  closeSettingsOverlay() {
+    if (!this.dom.settingsOverlay) return;
+    this.dom.settingsOverlay.classList.add("hidden");
+    this.dom.settingsOverlay.classList.remove("flex");
+    if (this.dom.tabSettings) {
+      this.dom.tabSettings.classList.remove("text-white");
+      this.dom.tabSettings.classList.add("text-slate-400");
+    }
+  }
+
+  loadSettings() {
+    try {
+      const key = this.config.storageSettingsKey || "emt_settings_v1";
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const settings = JSON.parse(raw);
+      if (
+        settings &&
+        typeof settings.realtimeIntervalSeconds === "number" &&
+        settings.realtimeIntervalSeconds >= 1 &&
+        settings.realtimeIntervalSeconds <= 60
+      ) {
+        this.realtimeIntervalSeconds = settings.realtimeIntervalSeconds;
+        this.mapManager.realtimeIntervalMs =
+          this.realtimeIntervalSeconds * 1000;
+      }
+    } catch (error) {
+      console.warn("No se pudieron cargar ajustes", error);
+    }
+  }
+
+  saveSettings() {
+    try {
+      const key = this.config.storageSettingsKey || "emt_settings_v1";
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          realtimeIntervalSeconds: this.realtimeIntervalSeconds,
+        }),
+      );
+    } catch (error) {
+      console.warn("No se pudieron guardar ajustes", error);
+    }
   }
 
   async renderExpandedStopArrivals(expandedMap) {

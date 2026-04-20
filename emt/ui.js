@@ -35,6 +35,16 @@ export class DomRefs {
     this.stopsPageInfo = document.getElementById("stopsPageInfo");
 
     this.statusContainer = document.getElementById("statusContainer");
+
+    this.tabHome = document.getElementById("tabHome");
+    this.tabLines = document.getElementById("tabLines");
+    this.tabStops = document.getElementById("tabStops");
+    this.tabSettings = document.getElementById("tabSettings");
+    this.settingsOverlay = document.getElementById("settingsOverlay");
+    this.settingsBackBtn = document.getElementById("settingsBackBtn");
+    this.settingsRealtimeInterval = document.getElementById(
+      "settingsRealtimeInterval",
+    );
   }
 }
 
