@@ -490,6 +490,13 @@ export class BusApp {
 
     if (this.dom.menuView) {
       this.dom.menuView.classList.toggle("hidden", screen !== "menu");
+      if (screen === "menu") {
+        this.dom.menuView
+          .querySelectorAll("animate, animateTransform")
+          .forEach((a) => {
+            a.beginElement();
+          });
+      }
     }
     if (this.dom.linesView) {
       this.dom.linesView.classList.toggle("hidden", screen !== "lines");

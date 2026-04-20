@@ -38,142 +38,438 @@
       <main class="mx-auto mt-8 max-w-5xl px-4 sm:px-6 lg:px-8">
         <section
           id="menuView"
-          class="rounded-3xl border border-white/15 bg-white/[0.08] p-6 shadow-xl shadow-slate-950/20 backdrop-blur-xl sm:p-8"
+          class="-mx-4 -mt-8 flex min-h-[calc(100dvh-5rem)] flex-col items-center justify-center sm:-mx-6 lg:-mx-8"
         >
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <button
-              id="goLinesBtn"
-              class="group relative overflow-hidden rounded-3xl border border-cyan-300/40 bg-gradient-to-br from-cyan-500/30 via-sky-500/25 to-blue-700/35 p-6 text-left shadow-lg shadow-cyan-900/20 transition duration-300 hover:-translate-y-1 hover:brightness-110"
+          <svg
+            viewBox="0 0 400 260"
+            aria-hidden="true"
+            class="w-full max-w-lg drop-shadow-2xl px-6"
+          >
+            <!-- Defs -->
+            <defs>
+              <linearGradient id="busShine" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#fff" stop-opacity=".18" />
+                <stop offset="50%" stop-color="#fff" stop-opacity="0" />
+              </linearGradient>
+              <linearGradient id="glassShine" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#fff" stop-opacity=".4" />
+                <stop offset="100%" stop-color="#fff" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <!-- Sky -->
+            <rect width="400" height="180" fill="#0f172a" rx="20" />
+            <!-- Stars -->
+            <circle cx="40" cy="30" r="2" fill="#fde68a" opacity=".7" />
+            <circle cx="120" cy="20" r="1.5" fill="#fde68a" opacity=".5" />
+            <circle cx="250" cy="35" r="2.5" fill="#fde68a" opacity=".6" />
+            <circle cx="340" cy="18" r="1.8" fill="#fde68a" opacity=".4" />
+            <circle cx="180" cy="50" r="1" fill="#fde68a" opacity=".5" />
+            <circle cx="310" cy="55" r="1.5" fill="#fde68a" opacity=".6" />
+            <!-- Moon -->
+            <circle cx="340" cy="60" r="22" fill="#fef9c3" opacity=".15" />
+            <circle cx="340" cy="60" r="16" fill="#fef08a" opacity=".25" />
+            <!-- Road -->
+            <rect y="180" width="400" height="80" fill="#1e293b" rx="0" />
+            <rect
+              x="0"
+              y="216"
+              width="30"
+              height="4"
+              rx="2"
+              fill="#fbbf24"
+              opacity=".5"
+            />
+            <rect
+              x="50"
+              y="216"
+              width="30"
+              height="4"
+              rx="2"
+              fill="#fbbf24"
+              opacity=".5"
+            />
+            <rect
+              x="100"
+              y="216"
+              width="30"
+              height="4"
+              rx="2"
+              fill="#fbbf24"
+              opacity=".5"
+            />
+            <rect
+              x="150"
+              y="216"
+              width="30"
+              height="4"
+              rx="2"
+              fill="#fbbf24"
+              opacity=".5"
+            />
+            <rect
+              x="200"
+              y="216"
+              width="30"
+              height="4"
+              rx="2"
+              fill="#fbbf24"
+              opacity=".5"
+            />
+            <rect
+              x="250"
+              y="216"
+              width="30"
+              height="4"
+              rx="2"
+              fill="#fbbf24"
+              opacity=".5"
+            />
+            <rect
+              x="300"
+              y="216"
+              width="30"
+              height="4"
+              rx="2"
+              fill="#fbbf24"
+              opacity=".5"
+            />
+            <rect
+              x="350"
+              y="216"
+              width="30"
+              height="4"
+              rx="2"
+              fill="#fbbf24"
+              opacity=".5"
+            />
+            <!-- Buildings silhouette -->
+            <rect x="10" y="120" width="35" height="60" rx="3" fill="#334155" />
+            <rect x="50" y="100" width="25" height="80" rx="3" fill="#475569" />
+            <rect x="80" y="130" width="30" height="50" rx="3" fill="#334155" />
+            <rect
+              x="300"
+              y="110"
+              width="40"
+              height="70"
+              rx="3"
+              fill="#334155"
+            />
+            <rect
+              x="345"
+              y="125"
+              width="30"
+              height="55"
+              rx="3"
+              fill="#475569"
+            />
+            <!-- Building windows -->
+            <rect
+              x="17"
+              y="128"
+              width="6"
+              height="6"
+              rx="1"
+              fill="#fef08a"
+              opacity=".6"
+            />
+            <rect
+              x="30"
+              y="128"
+              width="6"
+              height="6"
+              rx="1"
+              fill="#fef08a"
+              opacity=".4"
+            />
+            <rect
+              x="17"
+              y="142"
+              width="6"
+              height="6"
+              rx="1"
+              fill="#fef08a"
+              opacity=".3"
+            />
+            <rect
+              x="30"
+              y="142"
+              width="6"
+              height="6"
+              rx="1"
+              fill="#fef08a"
+              opacity=".6"
+            />
+            <rect
+              x="55"
+              y="108"
+              width="5"
+              height="5"
+              rx="1"
+              fill="#fef08a"
+              opacity=".5"
+            />
+            <rect
+              x="65"
+              y="108"
+              width="5"
+              height="5"
+              rx="1"
+              fill="#fef08a"
+              opacity=".3"
+            />
+            <rect
+              x="55"
+              y="120"
+              width="5"
+              height="5"
+              rx="1"
+              fill="#fef08a"
+              opacity=".6"
+            />
+            <rect
+              x="308"
+              y="118"
+              width="6"
+              height="6"
+              rx="1"
+              fill="#fef08a"
+              opacity=".4"
+            />
+            <rect
+              x="322"
+              y="118"
+              width="6"
+              height="6"
+              rx="1"
+              fill="#fef08a"
+              opacity=".5"
+            />
+            <rect
+              x="308"
+              y="132"
+              width="6"
+              height="6"
+              rx="1"
+              fill="#fef08a"
+              opacity=".6"
+            />
+            <!-- Bus stop sign (static) -->
+            <rect x="30" y="155" width="4" height="45" rx="2" fill="#94a3b8" />
+            <rect x="20" y="148" width="24" height="18" rx="4" fill="#f472b6" />
+            <text
+              x="32"
+              y="160"
+              text-anchor="middle"
+              fill="#fff"
+              font-size="8"
+              font-family="sans-serif"
+              font-weight="bold"
             >
-              <div
-                class="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-cyan-300/20 blur-2xl"
-              ></div>
-              <div class="relative flex items-start gap-4">
-                <div
-                  class="h-16 w-16 shrink-0 rounded-2xl border border-cyan-200/40 bg-slate-950/35 p-2"
+              H
+            </text>
+            <!-- Bus group (animated: enters from right) -->
+            <g>
+              <animateTransform
+                attributeName="transform"
+                type="translate"
+                from="420 0"
+                to="0 0"
+                dur="2.2s"
+                fill="freeze"
+                calcMode="spline"
+                keySplines="0.25 0.1 0.25 1"
+                keyTimes="0;1"
+              />
+              <g transform="translate(400,0) scale(-1,1)">
+                <!-- Bus body -->
+                <rect
+                  x="115"
+                  y="145"
+                  width="170"
+                  height="55"
+                  rx="12"
+                  fill="#22d3ee"
+                />
+                <rect
+                  x="115"
+                  y="145"
+                  width="170"
+                  height="55"
+                  rx="12"
+                  fill="url(#busShine)"
+                />
+                <!-- Bus top -->
+                <rect
+                  x="125"
+                  y="138"
+                  width="150"
+                  height="12"
+                  rx="6"
+                  fill="#06b6d4"
+                />
+                <!-- Destination sign -->
+                <rect
+                  x="140"
+                  y="140"
+                  width="80"
+                  height="8"
+                  rx="3"
+                  fill="#083344"
+                />
+                <text
+                  x="180"
+                  y="147"
+                  text-anchor="middle"
+                  fill="#22d3ee"
+                  font-size="6"
+                  font-family="sans-serif"
+                  font-weight="bold"
                 >
-                  <svg
-                    viewBox="0 0 64 64"
-                    aria-hidden="true"
-                    class="h-full w-full"
-                  >
-                    <rect
-                      x="8"
-                      y="12"
-                      width="48"
-                      height="34"
-                      rx="8"
-                      fill="#22d3ee"
-                    />
-                    <rect
-                      x="14"
-                      y="18"
-                      width="36"
-                      height="10"
-                      rx="3"
-                      fill="#083344"
-                    />
-                    <rect
-                      x="14"
-                      y="31"
-                      width="10"
-                      height="10"
-                      rx="2"
-                      fill="#e0f2fe"
-                    />
-                    <rect
-                      x="28"
-                      y="31"
-                      width="10"
-                      height="10"
-                      rx="2"
-                      fill="#e0f2fe"
-                    />
-                    <rect
-                      x="42"
-                      y="31"
-                      width="8"
-                      height="10"
-                      rx="2"
-                      fill="#e0f2fe"
-                    />
-                    <circle cx="21" cy="48" r="5" fill="#f8fafc" />
-                    <circle cx="43" cy="48" r="5" fill="#f8fafc" />
-                  </svg>
-                </div>
-                <div>
-                  <p
-                    class="text-xs uppercase tracking-[0.18em] text-cyan-100/80"
-                  >
-                    Vista
-                  </p>
-                  <p class="mt-1 text-2xl font-semibold text-white">
-                    Lineas de autobus
-                  </p>
-                  <p class="mt-2 text-sm text-cyan-100/90">
-                    Consulta el listado de lineas disponibles.
-                  </p>
-                </div>
-              </div>
-            </button>
-
-            <button
-              id="goStopsBtn"
-              class="group relative overflow-hidden rounded-3xl border border-fuchsia-300/35 bg-gradient-to-br from-fuchsia-500/25 via-rose-500/25 to-orange-500/30 p-6 text-left shadow-lg shadow-fuchsia-900/20 transition duration-300 hover:-translate-y-1 hover:brightness-110"
-            >
-              <div
-                class="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-fuchsia-300/20 blur-2xl"
-              ></div>
-              <div class="relative flex items-start gap-4">
-                <div
-                  class="h-16 w-16 shrink-0 rounded-2xl border border-fuchsia-200/35 bg-slate-950/35 p-2"
-                >
-                  <svg
-                    viewBox="0 0 64 64"
-                    aria-hidden="true"
-                    class="h-full w-full"
-                  >
-                    <rect
-                      x="24"
-                      y="8"
-                      width="16"
-                      height="42"
-                      rx="3"
-                      fill="#f472b6"
-                    />
-                    <rect
-                      x="14"
-                      y="14"
-                      width="36"
-                      height="16"
-                      rx="4"
-                      fill="#4a044e"
-                    />
-                    <circle cx="32" cy="22" r="4" fill="#fdf2f8" />
-                    <rect
-                      x="18"
-                      y="52"
-                      width="28"
-                      height="4"
-                      rx="2"
-                      fill="#fdf2f8"
-                    />
-                  </svg>
-                </div>
-                <div>
-                  <p
-                    class="text-xs uppercase tracking-[0.18em] text-fuchsia-100/80"
-                  >
-                    Vista
-                  </p>
-                  <p class="mt-1 text-2xl font-semibold text-white">Paradas</p>
-                  <p class="mt-2 text-sm text-fuchsia-100/90">
-                    Explora todas las paradas y su detalle en mapa.
-                  </p>
-                </div>
-              </div>
-            </button>
-          </div>
+                  EMT VALENCIA
+                </text>
+                <!-- Windshield -->
+                <rect
+                  x="250"
+                  y="152"
+                  width="28"
+                  height="24"
+                  rx="5"
+                  fill="#e0f2fe"
+                  opacity=".9"
+                />
+                <rect
+                  x="250"
+                  y="152"
+                  width="28"
+                  height="24"
+                  rx="5"
+                  fill="url(#glassShine)"
+                />
+                <!-- Windows -->
+                <rect
+                  x="130"
+                  y="155"
+                  width="22"
+                  height="18"
+                  rx="4"
+                  fill="#e0f2fe"
+                  opacity=".85"
+                />
+                <rect
+                  x="158"
+                  y="155"
+                  width="22"
+                  height="18"
+                  rx="4"
+                  fill="#e0f2fe"
+                  opacity=".85"
+                />
+                <rect
+                  x="186"
+                  y="155"
+                  width="22"
+                  height="18"
+                  rx="4"
+                  fill="#e0f2fe"
+                  opacity=".85"
+                />
+                <rect
+                  x="214"
+                  y="155"
+                  width="22"
+                  height="18"
+                  rx="4"
+                  fill="#e0f2fe"
+                  opacity=".85"
+                />
+                <!-- Door -->
+                <rect
+                  x="237"
+                  y="162"
+                  width="10"
+                  height="30"
+                  rx="3"
+                  fill="#0e7490"
+                />
+                <rect
+                  x="241"
+                  y="166"
+                  width="2"
+                  height="8"
+                  rx="1"
+                  fill="#a5f3fc"
+                />
+                <!-- Headlights -->
+                <circle cx="288" cy="185" r="5" fill="#fef08a" />
+                <circle cx="288" cy="185" r="8" fill="#fef08a" opacity=".15" />
+                <circle cx="122" cy="185" r="4" fill="#fca5a5" opacity=".8" />
+                <!-- Bus stripe -->
+                <rect
+                  x="115"
+                  y="180"
+                  width="170"
+                  height="4"
+                  rx="2"
+                  fill="#0891b2"
+                />
+                <!-- Wheels -->
+                <circle cx="150" cy="202" r="12" fill="#1e293b" />
+                <circle cx="150" cy="202" r="7" fill="#64748b" />
+                <circle cx="150" cy="202" r="3" fill="#94a3b8" />
+                <circle cx="255" cy="202" r="12" fill="#1e293b" />
+                <circle cx="255" cy="202" r="7" fill="#64748b" />
+                <circle cx="255" cy="202" r="3" fill="#94a3b8" />
+                <!-- Speed lines (fade out when bus stops) -->
+                <g>
+                  <animate
+                    attributeName="opacity"
+                    values="0;0;.6;.6;0"
+                    keyTimes="0;0.05;0.15;0.75;1"
+                    dur="2.2s"
+                    fill="freeze"
+                  />
+                  <line
+                    x1="95"
+                    y1="165"
+                    x2="108"
+                    y2="165"
+                    stroke="#94a3b8"
+                    stroke-width="1.5"
+                    opacity=".4"
+                    stroke-linecap="round"
+                  />
+                  <line
+                    x1="90"
+                    y1="175"
+                    x2="106"
+                    y2="175"
+                    stroke="#94a3b8"
+                    stroke-width="1.5"
+                    opacity=".3"
+                    stroke-linecap="round"
+                  />
+                  <line
+                    x1="88"
+                    y1="185"
+                    x2="104"
+                    y2="185"
+                    stroke="#94a3b8"
+                    stroke-width="1.5"
+                    opacity=".4"
+                    stroke-linecap="round"
+                  />
+                </g>
+              </g>
+            </g>
+          </svg>
+          <h1
+            class="mt-6 text-center font-display text-3xl font-bold text-white sm:text-4xl"
+          >
+            EMT Valencia
+          </h1>
+          <p class="mt-2 text-center text-sm text-slate-400">
+            Consulta lineas, paradas y llegadas en tiempo real
+          </p>
         </section>
 
         <section id="linesView" class="hidden bg-transparent p-0">
