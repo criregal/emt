@@ -27,6 +27,8 @@ export class LeafletMapManager {
     this.realtimeIntervalMs = 5000;
     this.aerialOverlayEnabled = false;
     this.aerialOverlayLayer = null;
+    this.fitAllStopsEnabled = false;
+    this.lineStopMarkers = [];
     this.arrivalsRequestToken = 0;
     this.currentArrivalsRows = [];
     this.lastRouteMetrics = {
@@ -177,6 +179,7 @@ export class LeafletMapManager {
       ? expandedMap.lineStops
       : [];
 
+    this.lineStopMarkers = [];
     const boundsPoints = [];
     lineStops.forEach((stop) => {
       const stopId = String(stop && stop.id ? stop.id : "");
@@ -206,6 +209,8 @@ export class LeafletMapManager {
       })
         .addTo(map)
         .bindPopup(popupText);
+
+      this.lineStopMarkers.push(marker);
 
       marker.on("click", () => {
         this.selectRouteTargetStop(
@@ -237,6 +242,11 @@ export class LeafletMapManager {
 
     if (boundsPoints.length >= 2) {
       map.fitBounds(this.lineBounds.pad(0.2));
+    }
+
+    if (!this.fitAllStopsEnabled) {
+      this.hideLineStopMarkers(map);
+      this.centerOnSelectedStop(map);
     }
   }
 
@@ -365,7 +375,10 @@ export class LeafletMapManager {
 
     body.innerHTML = `
       <button type="button" data-map-action="center-stop" class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-left font-semibold text-slate-100 hover:bg-white/20">Centrar parada</button>
-      <button type="button" data-map-action="fit-line" class="w-full rounded-md border border-white/20 bg-white/10 px-2 py-1 text-left font-semibold text-slate-100 hover:bg-white/20">Ver todas</button>
+      <label class="inline-flex w-full items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
+        <input type="checkbox" data-map-action="fit-all-toggle" class="h-3.5 w-3.5 accent-fuchsia-400" />
+        Ver todas
+      </label>
       <button type="button" data-map-action="center-user" class="w-full rounded-md border border-cyan-300/30 bg-cyan-500/20 px-2 py-1 text-left font-semibold text-cyan-100 hover:bg-cyan-500/30">Mi ubicacion</button>
       <button type="button" data-map-action="route-user-stop" class="w-full rounded-md border border-amber-300/30 bg-amber-500/20 px-2 py-1 text-left font-semibold text-amber-100 hover:bg-amber-500/30">Ruta a pie</button>
       <label class="inline-flex w-full items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 font-semibold text-slate-100">
@@ -384,7 +397,6 @@ export class LeafletMapManager {
       btn.addEventListener("click", () => {
         const action = btn.getAttribute("data-map-action");
         if (action === "center-stop") this.centerOnSelectedStop(map);
-        if (action === "fit-line") this.fitAllLineStops(map);
         if (action === "center-user") this.centerOnUserLocation(map);
         if (action === "route-user-stop")
           this.drawRouteToSelectedStop(map, {
@@ -414,6 +426,23 @@ export class LeafletMapManager {
         this.toggleAerialOverlay(map, !!aerialSwitch.checked);
       });
     }
+
+    const fitAllSwitch = body.querySelector(
+      'input[data-map-action="fit-all-toggle"]',
+    );
+    if (fitAllSwitch) {
+      fitAllSwitch.checked = !!this.fitAllStopsEnabled;
+      fitAllSwitch.addEventListener("change", () => {
+        this.fitAllStopsEnabled = !!fitAllSwitch.checked;
+        if (this.fitAllStopsEnabled) {
+          this.showLineStopMarkers(map);
+          this.fitAllLineStops(map);
+        } else {
+          this.hideLineStopMarkers(map);
+          this.centerOnSelectedStop(map);
+        }
+      });
+    }
   }
 
   centerOnSelectedStop(map) {
@@ -433,6 +462,18 @@ export class LeafletMapManager {
     }
 
     this.status.show("No hay paradas suficientes para ajustar el mapa", "info");
+  }
+
+  showLineStopMarkers(map) {
+    this.lineStopMarkers.forEach((m) => {
+      if (!map.hasLayer(m)) map.addLayer(m);
+    });
+  }
+
+  hideLineStopMarkers(map) {
+    this.lineStopMarkers.forEach((m) => {
+      if (map.hasLayer(m)) map.removeLayer(m);
+    });
   }
 
   centerOnUserLocation(map) {
@@ -1305,6 +1346,7 @@ export class LeafletMapManager {
     this.menuDialogContainer = null;
     this.userPoint = null;
     this.selectedStopPoint = null;
+    this.lineStopMarkers = [];
     this.lineBounds = null;
     this.lastExpandedMapData = null;
     this.routeSummaryElementId = "";
